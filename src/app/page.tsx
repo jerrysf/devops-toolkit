@@ -3,6 +3,7 @@ import {
   ArrowRight,
   BookOpenCheck,
   Clock,
+  Play,
   ShieldCheck,
   Terminal,
   Wrench,
@@ -13,8 +14,11 @@ import { SectionHeading } from "@/components/section-heading";
 import { ScenarioCard } from "@/components/scenario-card";
 import { ProductCta } from "@/components/product-cta";
 import { NewsletterForm } from "@/components/newsletter-form";
+import { HeroTerminal } from "@/components/hero-terminal";
+import { StatsStrip } from "@/components/stats-strip";
 import { publishedArticles, kubernetesArticles } from "@/data/articles";
 import { tools } from "@/data/tools";
+import { allSimScenarios } from "@/data/simulator";
 import { product } from "@/data/product";
 
 const whyItems = [
@@ -40,90 +44,123 @@ const whyItems = [
   },
 ];
 
-const audiences = [
-  {
-    role: "DevOps Engineers",
-    pain: "Own deploy pipelines that break at the worst time and need fast, repeatable diagnostics.",
-  },
-  {
-    role: "Site Reliability Engineers",
-    pain: "Carry the pager. Need structured incident response, not a wall of Stack Overflow tabs.",
-  },
-  {
-    role: "Platform Engineers",
-    pain: "Support internal developer platforms where every edge case lands on your desk.",
-  },
-  {
-    role: "Kubernetes Engineers",
-    pain: "Operate clusters day-to-day and want verified commands instead of tribal knowledge.",
-  },
+const featuredToolSlugs = [
+  "manifest-validator",
+  "kubectl-builder",
+  "rbac-generator",
+  "cronjob-generator",
 ];
 
 export default function Home() {
-  const featured = kubernetesArticles.slice(0, 6);
+  const featured = kubernetesArticles.filter((a) => a.published).slice(0, 6);
+  const featuredTools = featuredToolSlugs
+    .map((s) => tools.find((t) => t.slug === s))
+    .filter((t): t is NonNullable<typeof t> => t !== undefined);
+  const previewScenario =
+    allSimScenarios.find((s) => s.slug === "crashloopbackoff") ??
+    allSimScenarios[0];
 
   return (
     <div className="flex flex-col">
       {/* Hero */}
       <section className="relative overflow-hidden border-b border-border/60">
         <div className="hero-grid absolute inset-0" aria-hidden="true" />
-        <div className="relative mx-auto grid max-w-6xl gap-10 px-4 py-20 sm:px-6 lg:grid-cols-2 lg:items-center lg:py-28">
+        <div className="relative mx-auto grid max-w-6xl gap-10 px-4 py-16 sm:px-6 lg:grid-cols-2 lg:items-center lg:py-24">
           <div>
             <span className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 font-mono text-xs text-primary">
               <Wrench className="size-3" /> For DevOps & SRE engineers
             </span>
             <h1 className="mt-5 text-4xl font-semibold tracking-tight sm:text-5xl">
-              Solve Kubernetes Problems{" "}
-              <span className="text-primary">Faster.</span>
+              It's 3 a.m. and the pod{" "}
+              <span className="text-primary">just crashed.</span>
             </h1>
             <p className="mt-4 max-w-xl text-lg text-muted-foreground">
-              Practical troubleshooting workflows, production-ready runbooks,
-              and developer tools built for DevOps and SRE engineers.
+              Free tools, guided wizards, and a practice simulator that teach
+              you to find the root cause — not to restart things and hope.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
-              <Button render={<Link href="/tools" />} size="lg">
-                Explore Free Tools
+              <Button render={<Link href="/troubleshoot" />} size="lg">
+                Start troubleshooting <ArrowRight />
               </Button>
               <Button
-                render={<Link href="/products/kubernetes-toolkit" />}
+                render={<Link href="/simulator" />}
                 size="lg"
                 variant="secondary"
               >
-                Get the Kubernetes Toolkit
+                <Play /> Try the simulator
+              </Button>
+            </div>
+            <p className="mt-4 text-xs text-muted-foreground">
+              No signup. No cluster access needed. Everything runs locally.
+            </p>
+          </div>
+          <HeroTerminal />
+        </div>
+
+        {/* Trust strip */}
+        <div className="relative mx-auto max-w-6xl px-4 pb-14 sm:px-6">
+          <StatsStrip
+            stats={[
+              { value: tools.length, label: "interactive tools" },
+              { value: allSimScenarios.length, label: "simulator scenarios" },
+              {
+                value: publishedArticles.length,
+                label: "complete troubleshooting guides",
+              },
+              { value: 8, label: "guided diagnostic wizards" },
+            ]}
+          />
+        </div>
+      </section>
+
+      {/* Simulator feature — the differentiator */}
+      <section className="border-b border-border/60 bg-muted/30">
+        <div className="mx-auto grid max-w-6xl gap-10 px-4 py-16 sm:px-6 lg:grid-cols-2 lg:items-center">
+          <div>
+            <span className="font-mono text-xs uppercase tracking-widest text-primary">
+              Practice without production
+            </span>
+            <h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">
+              Learn incident response in a simulated cluster — not at 3 a.m. for
+              real.
+            </h2>
+            <p className="mt-4 max-w-lg text-muted-foreground">
+              Ten deterministic failure scenarios with realistic kubectl
+              output, progressive hints, and scored diagnosis. No kubeconfig,
+              no credentials, no risk.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Button
+                render={
+                  <Link href={`/simulator/${previewScenario.slug}`} />
+                }
+              >
+                Practice: fix a CrashLoopBackOff
+              </Button>
+              <Button render={<Link href="/simulator" />} variant="outline">
+                All {allSimScenarios.length} scenarios
               </Button>
             </div>
           </div>
-
-          {/* Terminal illustration */}
-          <div className="relative hidden lg:block" aria-hidden="true">
-            <div className="rounded-xl border border-border bg-[#0a1224] shadow-2xl shadow-primary/10">
-              <div className="flex items-center gap-1.5 border-b border-white/10 px-4 py-2.5">
-                <span className="size-2.5 rounded-full bg-red-500/70" />
-                <span className="size-2.5 rounded-full bg-amber-500/70" />
-                <span className="size-2.5 rounded-full bg-emerald-500/70" />
-                <span className="ml-3 font-mono text-xs text-slate-500">
-                  kubectl — troubleshooting
-                </span>
-              </div>
-              <div className="space-y-2 p-4 font-mono text-[13px] leading-6">
-                <p className="text-slate-500">$ kubectl get pods</p>
-                <p className="text-slate-300">
-                  web-6c8f9bb-2xklp{" "}
-                  <span className="text-red-400">CrashLoopBackOff</span>{" "}
-                  <span className="text-slate-500">7 (3m ago)</span>
-                </p>
-                <p className="mt-3 text-slate-500">
-                  $ kubectl logs web-6c8f9bb-2xklp --previous
-                </p>
-                <p className="text-slate-300">
-                  Error: missing required env var{" "}
-                  <span className="text-cyan-300">DATABASE_URL</span>
-                </p>
-                <p className="mt-3 text-emerald-400">
-                  ✓ Root cause found in 2 commands
-                </p>
-              </div>
-            </div>
+          <div className="rounded-xl border border-border bg-card p-5">
+            <p className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+              Scenario library
+            </p>
+            <ul className="mt-4 grid gap-2 sm:grid-cols-2">
+              {allSimScenarios.map((s) => (
+                <li key={s.slug}>
+                  <Link
+                    href={`/simulator/${s.slug}`}
+                    className="group flex items-center gap-2 rounded-lg border border-border/60 px-3 py-2 text-sm transition-colors hover:border-primary/50"
+                  >
+                    <span className="size-1.5 shrink-0 rounded-full bg-primary/70" />
+                    <span className="truncate group-hover:text-primary">
+                      {s.title}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       </section>
@@ -132,8 +169,8 @@ export default function Home() {
       <section className="mx-auto w-full max-w-6xl px-4 py-16 sm:px-6">
         <SectionHeading
           eyebrow="Troubleshooting library"
-          title="Popular Kubernetes failure modes"
-          description="Structured guides for the errors that page you. Each one walks from symptoms to verified resolution."
+          title="The failure modes that page you"
+          description="Structured guides walking from symptoms to verified resolution — with expected output at every step."
         />
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {featured.map((a) => (
@@ -141,22 +178,22 @@ export default function Home() {
           ))}
         </div>
         <div className="mt-8 text-center">
-          <Button render={<Link href="/kubernetes" />} variant="outline">
-            Browse all guides <ArrowRight />
+          <Button render={<Link href="/troubleshoot" />} variant="outline">
+            Search the troubleshooting center <ArrowRight />
           </Button>
         </div>
       </section>
 
-      {/* Free tools */}
+      {/* Free tools — curated */}
       <section className="border-y border-border/60 bg-muted/30">
         <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
           <SectionHeading
             eyebrow="Free tools"
-            title="Browser-native DevOps utilities"
-            description="No signup, no upload. Everything runs locally on your machine."
+            title="Browser-native engineering utilities"
+            description="No signup, no upload. Every tool runs locally on your machine."
           />
           <div className="grid gap-4 sm:grid-cols-2">
-            {tools.map((tool) => (
+            {featuredTools.map((tool) => (
               <Link
                 key={tool.slug}
                 href={`/tools/${tool.slug}`}
@@ -177,6 +214,11 @@ export default function Home() {
               </Link>
             ))}
           </div>
+          <div className="mt-8 text-center">
+            <Button render={<Link href="/tools" />} variant="outline">
+              All {tools.length} tools <ArrowRight />
+            </Button>
+          </div>
         </div>
       </section>
 
@@ -190,7 +232,7 @@ export default function Home() {
           {whyItems.map((item) => (
             <div
               key={item.title}
-              className="rounded-xl border border-border bg-card p-5"
+              className="rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary/40"
             >
               <item.icon className="size-5 text-primary" />
               <h3 className="mt-3 text-sm font-medium">{item.title}</h3>
@@ -205,34 +247,15 @@ export default function Home() {
         <ProductCta />
       </section>
 
-      {/* Who this is for */}
-      <section className="mx-auto w-full max-w-6xl px-4 py-16 sm:px-6">
-        <SectionHeading
-          eyebrow="Who this is for"
-          title="Made for engineers on the hook for uptime"
-        />
-        <div className="grid gap-4 sm:grid-cols-2">
-          {audiences.map((a) => (
-            <div
-              key={a.role}
-              className="rounded-xl border border-border bg-card p-5"
-            >
-              <h3 className="font-medium">{a.role}</h3>
-              <p className="mt-1.5 text-sm text-muted-foreground">{a.pain}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
       {/* Latest guides */}
       <section className="border-y border-border/60 bg-muted/30">
         <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
           <SectionHeading
             eyebrow="Latest guides"
-            title="Recently reviewed troubleshooting guides"
+            title="Complete troubleshooting runbooks"
           />
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {publishedArticles.map((a) => (
+            {publishedArticles.slice(0, 6).map((a) => (
               <Link
                 key={a.slug}
                 href={`/kubernetes/${a.slug}`}
@@ -257,25 +280,28 @@ export default function Home() {
       {/* Pricing CTA */}
       <section className="mx-auto w-full max-w-6xl px-4 py-20 text-center sm:px-6">
         <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-          One purchase. Every 3 a.m. incident gets easier.
+          Start free. Upgrade when the 3 a.m. page hits.
         </h2>
         <p className="mx-auto mt-3 max-w-xl text-muted-foreground">
           The Kubernetes Troubleshooting Toolkit is a one-time $
-          {product.priceUsd} purchase — PDF handbook, Markdown runbooks, YAML
-          examples, and checklists.
+          {product.priceUsd} purchase — printable handbook, six verified
+          runbooks, YAML examples, and incident checklists.
         </p>
         <div className="mt-6 flex flex-wrap justify-center gap-3">
-          <Button render={<Link href="/pricing" />} size="lg">
-            See pricing
+          <Button render={<Link href="/products/kubernetes-toolkit" />} size="lg">
+            What's inside
           </Button>
           <Button
-            render={<Link href="/products/kubernetes-toolkit" />}
+            render={<Link href="/pricing" />}
             size="lg"
             variant="outline"
           >
-            What's inside
+            See pricing
           </Button>
         </div>
+        <p className="mt-4 text-xs text-muted-foreground">
+          One-time purchase · free sample runbook available
+        </p>
       </section>
 
       {/* Newsletter */}
