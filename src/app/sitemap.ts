@@ -2,6 +2,9 @@ import type { MetadataRoute } from "next";
 import { siteConfig } from "@/lib/site";
 import { publishedArticles } from "@/data/articles";
 import { tools } from "@/data/tools";
+import { wizardTrees } from "@/data/wizards";
+import { simScenarios } from "@/data/simulator";
+import { kbCategories, kbItemsFor } from "@/data/kb";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const staticRoutes = [
@@ -9,6 +12,11 @@ export default function sitemap(): MetadataRoute.Sitemap {
     "/kubernetes",
     "/kubernetes/kubectl-commands",
     "/kubernetes/checklist",
+    "/troubleshoot",
+    "/troubleshoot/wizard",
+    "/simulator",
+    "/kb",
+    "/resources",
     "/tools",
     "/products/kubernetes-toolkit",
     "/pricing",
@@ -32,5 +40,24 @@ export default function sitemap(): MetadataRoute.Sitemap {
     .filter((t) => t.published)
     .map((t) => ({ url: `${siteConfig.url}/tools/${t.slug}` }));
 
-  return [...staticRoutes, ...articleRoutes, ...toolRoutes];
+  const wizardRoutes = wizardTrees.map((w) => ({
+    url: `${siteConfig.url}/troubleshoot/wizard/${w.slug}`,
+  }));
+
+  const simRoutes = simScenarios.map((s) => ({
+    url: `${siteConfig.url}/simulator/${s.slug}`,
+  }));
+
+  const kbRoutes = kbCategories
+    .filter((c) => kbItemsFor(c.slug).length > 0)
+    .map((c) => ({ url: `${siteConfig.url}/kb/${c.slug}` }));
+
+  return [
+    ...staticRoutes,
+    ...articleRoutes,
+    ...toolRoutes,
+    ...wizardRoutes,
+    ...simRoutes,
+    ...kbRoutes,
+  ];
 }

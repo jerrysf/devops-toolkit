@@ -15,8 +15,39 @@ import {
 import { trackEvent } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 
+type FieldMode = "every" | "at" | "everyN" | "range";
+
+interface BuilderField {
+  mode: FieldMode;
+  a: string;
+  b: string;
+}
+
+const FIELD_NAMES = ["minute", "hour", "day of month", "month", "day of week"];
+const FIELD_RANGES = ["0–59", "0–23", "1–31", "1–12/JAN–DEC", "0–7/SUN–SAT"];
+
+function fieldExpr(f: BuilderField): string {
+  switch (f.mode) {
+    case "every":
+      return "*";
+    case "at":
+      return f.a || "*";
+    case "everyN":
+      return `*/${f.a || "1"}`;
+    case "range":
+      return `${f.a || "0"}-${f.b || "0"}`;
+  }
+}
+
 export function CronGeneratorTool() {
   const [expr, setExpr] = useState("0 9 * * 1-5");
+  const [builder, setBuilder] = useState<BuilderField[]>([
+    { mode: "at", a: "0", b: "" },
+    { mode: "at", a: "9", b: "" },
+    { mode: "every", a: "", b: "" },
+    { mode: "every", a: "", b: "" },
+    { mode: "range", a: "1", b: "5" },
+  ]);
   const parsed = useMemo(() => parseCronExpression(expr), [expr]);
   // Next-run times depend on "now", so they're computed after mount on
   // the client — not during prerender.
@@ -41,6 +72,71 @@ export function CronGeneratorTool() {
 
   return (
     <div className="space-y-8">
+      {/* Structured builder */}
+      <div className="rounded-xl border border-border bg-card p-4">
+        <p className="mb-3 text-sm font-medium">Build a schedule</p>
+        <div className="grid gap-3 sm:grid-cols-5">
+          {builder.map((f, i) => (
+            <div key={i} className="space-y-1.5">
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                {FIELD_NAMES[i]}
+              </p>
+              <select
+                value={f.mode}
+                onChange={(e) => {
+                  const next = builder.map((x, j) =>
+                    j === i ? { ...x, mode: e.target.value as FieldMode } : x,
+                  );
+                  setBuilder(next);
+                  setExpr(next.map(fieldExpr).join(" "));
+                }}
+                className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+              >
+                <option value="every">every</option>
+                <option value="at">at / on</option>
+                <option value="everyN">every N</option>
+                <option value="range">range</option>
+              </select>
+              {f.mode !== "every" && (
+                <div className="flex gap-1">
+                  <Input
+                    value={f.a}
+                    onChange={(e) => {
+                      const next = builder.map((x, j) =>
+                        j === i ? { ...x, a: e.target.value } : x,
+                      );
+                      setBuilder(next);
+                      setExpr(next.map(fieldExpr).join(" "));
+                    }}
+                    placeholder={f.mode === "everyN" ? "N" : "from"}
+                    className="h-7 font-mono text-xs"
+                  />
+                  {f.mode === "range" && (
+                    <Input
+                      value={f.b}
+                      onChange={(e) => {
+                        const next = builder.map((x, j) =>
+                          j === i ? { ...x, b: e.target.value } : x,
+                        );
+                        setBuilder(next);
+                        setExpr(next.map(fieldExpr).join(" "));
+                      }}
+                      placeholder="to"
+                      className="h-7 font-mono text-xs"
+                    />
+                  )}
+                </div>
+              )}
+              <p className="text-[11px] text-muted-foreground">{FIELD_RANGES[i]}</p>
+            </div>
+          ))}
+        </div>
+        <p className="mt-3 text-xs text-muted-foreground">
+          Day-of-week accepts numbers (0–7, both 0 and 7 = Sunday) or names
+          (SUN–SAT); month accepts JAN–DEC.
+        </p>
+      </div>
+
       <div>
         <label htmlFor="cron-expr" className="mb-2 block text-sm font-medium">
           Cron expression (5 fields)

@@ -5,13 +5,51 @@
  * and are routed. `comingSoon` entries appear on index pages as
  * "in progress" — they intentionally have no route so nothing
  * pretends to be finished.
+ *
+ * Taxonomy fields (severity/component/difficulty/symptoms) power the
+ * Troubleshooting Center's search and filtering.
  */
+
+export type Severity = "critical" | "high" | "medium" | "low";
+export type Component =
+  | "pod"
+  | "node"
+  | "workload"
+  | "network"
+  | "storage"
+  | "scheduling"
+  | "image"
+  | "dns";
+export type Difficulty = "beginner" | "intermediate" | "advanced";
+
+export const severityOrder: Severity[] = ["critical", "high", "medium", "low"];
+export const difficultyOrder: Difficulty[] = [
+  "beginner",
+  "intermediate",
+  "advanced",
+];
+
+export const componentLabels: Record<Component, string> = {
+  pod: "Pod runtime",
+  node: "Node",
+  workload: "Workload",
+  network: "Networking",
+  storage: "Storage",
+  scheduling: "Scheduling",
+  image: "Image / Registry",
+  dns: "DNS",
+};
 
 export interface ArticleMeta {
   slug: string;
   title: string;
   shortTitle: string;
   description: string;
+  severity: Severity;
+  component: Component;
+  difficulty: Difficulty;
+  /** Searchable symptom strings users actually see. */
+  symptoms: string[];
   /** Kubernetes versions the guide was verified against. */
   kubernetesVersions: string;
   lastReviewed: string; // ISO date
@@ -28,6 +66,15 @@ export const kubernetesArticles: ArticleMeta[] = [
     shortTitle: "CrashLoopBackOff",
     description:
       "Diagnose and fix CrashLoopBackOff pods: read restart-aware logs, interpret exit codes, and resolve the most common root causes step by step.",
+    severity: "high",
+    component: "pod",
+    difficulty: "beginner",
+    symptoms: [
+      "pod keeps restarting",
+      "CrashLoopBackOff status",
+      "back-off restarting failed container",
+      "container exits immediately",
+    ],
     kubernetesVersions: "1.28 – 1.34",
     lastReviewed: "2026-11-19",
     readingTimeMinutes: 12,
@@ -41,6 +88,17 @@ export const kubernetesArticles: ArticleMeta[] = [
     shortTitle: "ImagePullBackOff",
     description:
       "Troubleshoot image pull failures: bad tags, private registry authentication, imagePullSecrets, and registry rate limiting.",
+    severity: "medium",
+    component: "image",
+    difficulty: "beginner",
+    symptoms: [
+      "ImagePullBackOff",
+      "ErrImagePull",
+      "failed to pull image",
+      "pull access denied",
+      "manifest unknown",
+      "toomanyrequests",
+    ],
     kubernetesVersions: "1.28 – 1.34",
     lastReviewed: "2026-11-19",
     readingTimeMinutes: 10,
@@ -54,6 +112,17 @@ export const kubernetesArticles: ArticleMeta[] = [
     shortTitle: "Node NotReady",
     description:
       "Bring a NotReady node back online: check node conditions, kubelet health, resource pressure, and safely drain when needed.",
+    severity: "critical",
+    component: "node",
+    difficulty: "intermediate",
+    symptoms: [
+      "node NotReady",
+      "KubeletNotReady",
+      "DiskPressure",
+      "MemoryPressure",
+      "pods stuck Terminating",
+      "node lost",
+    ],
     kubernetesVersions: "1.28 – 1.34",
     lastReviewed: "2026-11-19",
     readingTimeMinutes: 11,
@@ -67,6 +136,18 @@ export const kubernetesArticles: ArticleMeta[] = [
     shortTitle: "Pod Pending",
     description:
       "Unschedulable pods: insufficient resources, taints, affinity rules, and unbound volumes.",
+    severity: "medium",
+    component: "scheduling",
+    difficulty: "beginner",
+    symptoms: [
+      "pod Pending",
+      "FailedScheduling",
+      "Insufficient cpu",
+      "Insufficient memory",
+      "node affinity",
+      "untolerated taint",
+      "unbound immediate PersistentVolumeClaims",
+    ],
     kubernetesVersions: "1.28 – 1.34",
     lastReviewed: "",
     readingTimeMinutes: 0,
@@ -80,6 +161,16 @@ export const kubernetesArticles: ArticleMeta[] = [
     shortTitle: "OOMKilled",
     description:
       "Memory limits, exit code 137, and right-sizing requests to stop OOM kills.",
+    severity: "high",
+    component: "pod",
+    difficulty: "intermediate",
+    symptoms: [
+      "OOMKilled",
+      "exit code 137",
+      "container killed",
+      "memory limit exceeded",
+      "pod evicted",
+    ],
     kubernetesVersions: "1.28 – 1.34",
     lastReviewed: "",
     readingTimeMinutes: 0,
@@ -93,10 +184,21 @@ export const kubernetesArticles: ArticleMeta[] = [
     shortTitle: "DNS Resolution",
     description:
       "Debug CoreDNS: nxdomain errors, ndots behavior, and upstream resolution failures.",
+    severity: "high",
+    component: "dns",
+    difficulty: "advanced",
+    symptoms: [
+      "NXDOMAIN",
+      "no such host",
+      "name resolution failed",
+      "dial tcp: lookup",
+      "CoreDNS",
+      "temporary failure in name resolution",
+    ],
     kubernetesVersions: "1.28 – 1.34",
     lastReviewed: "",
     readingTimeMinutes: 0,
-    related: ["crashloopbackoff"],
+    related: ["crashloopbackoff", "ingress-502"],
     published: false,
     keywords: ["coredns", "nxdomain", "dns lookup failed"],
   },
@@ -106,6 +208,16 @@ export const kubernetesArticles: ArticleMeta[] = [
     shortTitle: "PVC Pending",
     description:
       "Unbound persistent volume claims: storage classes, provisioners, and capacity.",
+    severity: "medium",
+    component: "storage",
+    difficulty: "intermediate",
+    symptoms: [
+      "pvc Pending",
+      "unbound immediate PersistentVolumeClaims",
+      "waiting for a volume to be created",
+      "failed to provision volume",
+      "storageclass not found",
+    ],
     kubernetesVersions: "1.28 – 1.34",
     lastReviewed: "",
     readingTimeMinutes: 0,
@@ -119,6 +231,16 @@ export const kubernetesArticles: ArticleMeta[] = [
     shortTitle: "Ingress 502",
     description:
       "Trace 502 errors through ingress controllers to services, endpoints, and pods.",
+    severity: "high",
+    component: "network",
+    difficulty: "advanced",
+    symptoms: [
+      "502 Bad Gateway",
+      "no endpoints",
+      "upstream connect error",
+      "ingress not working",
+      "service unavailable",
+    ],
     kubernetesVersions: "1.28 – 1.34",
     lastReviewed: "",
     readingTimeMinutes: 0,

@@ -5,11 +5,13 @@ export const siteConfig = {
   url: process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000",
   email: "hello@devopstoolkit.dev",
   nav: [
-    { title: "Kubernetes", href: "/kubernetes" },
+    { title: "Troubleshoot", href: "/troubleshoot" },
+    { title: "Guides", href: "/kubernetes" },
     { title: "Tools", href: "/tools" },
-    { title: "Toolkit", href: "/products/kubernetes-toolkit" },
+    { title: "Simulator", href: "/simulator" },
+    { title: "Learn", href: "/kb" },
+    { title: "Resources", href: "/resources" },
     { title: "Pricing", href: "/pricing" },
-    { title: "Blog", href: "/blog" },
   ],
 } as const;
 
