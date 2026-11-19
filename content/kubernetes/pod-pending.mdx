@@ -61,7 +61,7 @@ A `Pending` PVC blocks scheduling — see the [PVC Pending guide](/kubernetes/pv
 
 - **Insufficient resources:** right-size requests down — `kubectl top pod` on siblings shows actual usage, often 3–5× below inflated requests. Or add capacity.
 - **Taints:** add a toleration *only* if the workload belongs there. Never tolerate control-plane taints to fix scheduling — that's masking a capacity problem.
-- **Selector:** fix the selector to a real label, or label a node. <Safety level="modifying" /> `kubectl label node node-2 pool=batch`
+- **Selector:** fix the selector to a real label, or label a node. <Safety level="modify" /> `kubectl label node node-2 pool=batch`
 - **PVC:** fix the claim's StorageClass/availability per the PVC guide.
 - **Quota:** raise it or delete idle workloads — confirm with the namespace owner first.
 

@@ -70,9 +70,9 @@ A policy selecting the pod without an egress rule for port 53 silently kills res
 ## Resolution
 
 - **Selector mismatch:** update `svc.spec.selector` to the pods' current labels (or relabel pods). Endpoints populate within seconds.
-- **CoreDNS down:** <Safety level="modifying" /> `kubectl rollout restart deployment coredns -n kube-system` — brief cluster-wide DNS blip during restart.
+- **CoreDNS down:** <Safety level="modify" /> `kubectl rollout restart deployment coredns -n kube-system` — brief cluster-wide DNS blip during restart.
 - **Namespace:** use `svc.ns` or FQDN in app config; never rely on short names cross-namespace.
-- **NetworkPolicy:** <Safety level="modifying" /> add egress allowing UDP/TCP 53 to kube-system.
+- **NetworkPolicy:** <Safety level="modify" /> add egress allowing UDP/TCP 53 to kube-system.
 
 ## Verification
 

@@ -57,7 +57,7 @@ OOM kills are abrupt — logs often end mid-line. A clean `OutOfMemoryError` (Ja
 
 ## Resolution
 
-- **Under-provisioned limit:** raise `resources.limits.memory` to observed peak + ~25% headroom. <Safety level="modifying" /> Keep `requests` at typical usage — requests schedule, limits kill.
+- **Under-provisioned limit:** raise `resources.limits.memory` to observed peak + ~25% headroom. <Safety level="modify" /> Keep `requests` at typical usage — requests schedule, limits kill.
 - **Leak:** raising the limit is a stopgap for blast-radius control while you profile (heap dump, pprof). Record the restart pattern in the incident timeline.
 - **Runtime mismatch:** JVM → `-XX:MaxRAMPercentage=75` (JDK 10+) or `-Xmx` ≈ 75% of limit; Node → `--max-old-space-size`.
 - **Node pressure:** check `kubectl describe node` — reduce noisy neighbors' limits or move the workload.

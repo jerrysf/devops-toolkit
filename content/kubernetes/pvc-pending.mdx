@@ -64,9 +64,9 @@ Provisioner pods down → provisioning times out rather than fails fast.
 
 ## Resolution
 
-- **Missing class:** point the claim at an existing class. For StatefulSets edit `volumeClaimTemplates[].spec.storageClassName` — note this requires recreating the StatefulSet's volume template. <Safety level="modifying" />
+- **Missing class:** point the claim at an existing class. For StatefulSets edit `volumeClaimTemplates[].spec.storageClassName` — note this requires recreating the StatefulSet's volume template. <Safety level="modify" />
 - **Or create the class:** only if you actually need that provisioner/parameters — a StorageClass is a provisioning recipe, not a quota.
-- **No default:** set `storageClassName` explicitly or mark a class default. <Safety level="modifying" /> `kubectl annotate storageclass standard storageclass.kubernetes.io/is-default-class=true`
+- **No default:** set `storageClassName` explicitly or mark a class default. <Safety level="modify" /> `kubectl annotate storageclass standard storageclass.kubernetes.io/is-default-class=true`
 - **Provisioner down:** fix the CSI driver deployment in kube-system — every PVC in that class is blocked.
 
 ## Verification

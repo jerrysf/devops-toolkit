@@ -65,9 +65,9 @@ The app listens on **3000**, the Service targets **8080** — kube-proxy forward
 
 ## Resolution
 
-- **Port mismatch:** align `service.spec.ports[].targetPort` with the container's real port. <Safety level="modifying" />
+- **Port mismatch:** align `service.spec.ports[].targetPort` with the container's real port. <Safety level="modify" />
 - **No endpoints:** fix the Service selector or the pod readiness — see [Pod Pending](/kubernetes/pod-pending) / [CrashLoopBackOff](/kubernetes/crashloopbackoff).
-- **Wrong rule:** update the ingress backend to the correct `service.name`/`port.number`. <Safety level="modifying" />
+- **Wrong rule:** update the ingress backend to the correct `service.name`/`port.number`. <Safety level="modify" />
 - **App port moved:** make the port a single source of truth — container `containerPort`, Service `targetPort`, and probe ports should match.
 
 ## Verification

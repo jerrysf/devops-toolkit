@@ -63,7 +63,7 @@ Create the binding or fix the role — generate correct YAML with the [RBAC Gene
 - **Missing binding:** create a RoleBinding naming the SA, its namespace, and the Role.
 - **Missing verb/resource:** edit the Role to add the verb+resource — patch rather than broaden to `*`.
 - **Cluster scope:** use ClusterRole + ClusterRoleBinding for cluster resources; note this grants across *all* namespaces.
-- **Wrong SA:** fix `spec.serviceAccountName` on the workload — <Safety level="modifying" /> requires pod recreation.
+- **Wrong SA:** fix `spec.serviceAccountName` on the workload — <Safety level="modify" /> requires pod recreation.
 
 Least privilege: grant exactly the verbs+resources the app needs. `*` is a code review flag, not a shortcut.
 

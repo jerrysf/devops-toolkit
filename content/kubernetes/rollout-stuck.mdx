@@ -59,8 +59,8 @@ Conditions:
 
 ## Resolution
 
-- **Root-cause fix first** — diagnose the stuck pod via the matching guide above, then fix the deployment spec. <Safety level="modifying" />
-- **If a bad rollout is live and old pods are healthy:** <Safety level="modifying" /> `kubectl rollout undo deploy/api -n example-ns` — restores the previous revision immediately. This is a traffic-affecting change, not destructive.
+- **Root-cause fix first** — diagnose the stuck pod via the matching guide above, then fix the deployment spec. <Safety level="modify" />
+- **If a bad rollout is live and old pods are healthy:** <Safety level="modify" /> `kubectl rollout undo deploy/api -n example-ns` — restores the previous revision immediately. This is a traffic-affecting change, not destructive.
 - **After ProgressDeadlineExceeded:** fix the cause, then `kubectl rollout restart` or let the controller retry — the condition clears on progress.
 - **Do NOT** `kubectl delete` old replicas to "force" the rollout — you lose your working baseline before the new version is proven.
 
