@@ -126,6 +126,62 @@ export const kbItems: KbItem[] = [
     type: "guide",
   },
   {
+    title: "Pod Pending: Complete Diagnostic Guide",
+    description:
+      "FailedScheduling events decoded — insufficient resources, taints, affinity, and unbound PVCs.",
+    href: "/kubernetes/pod-pending",
+    category: "kubernetes",
+    type: "guide",
+  },
+  {
+    title: "OOMKilled: Complete Diagnostic Guide",
+    description:
+      "Exit code 137, memory limits vs observed usage, and distinguishing leaks from under-provisioning.",
+    href: "/kubernetes/oomkilled",
+    category: "kubernetes",
+    type: "guide",
+  },
+  {
+    title: "DNS Resolution: Complete Diagnostic Guide",
+    description:
+      "CoreDNS health, missing endpoints, NXDOMAIN vs timeout, and ndots search-domain behavior.",
+    href: "/kubernetes/dns-resolution",
+    category: "kubernetes",
+    type: "guide",
+  },
+  {
+    title: "PVC Pending: Complete Diagnostic Guide",
+    description:
+      "StorageClasses, provisioners, and why claims stay unbound — the scheduling blocker behind StatefulSets.",
+    href: "/kubernetes/pvc-pending",
+    category: "kubernetes",
+    type: "guide",
+  },
+  {
+    title: "Ingress 502: Complete Diagnostic Guide",
+    description:
+      "Trace a Bad Gateway through ingress → service → endpoints → container port to the real break.",
+    href: "/kubernetes/ingress-502",
+    category: "kubernetes",
+    type: "guide",
+  },
+  {
+    title: "RBAC Forbidden: Complete Diagnostic Guide",
+    description:
+      "Parse the Forbidden message, use `kubectl auth can-i`, and find the missing verb or binding.",
+    href: "/kubernetes/rbac-forbidden",
+    category: "kubernetes",
+    type: "guide",
+  },
+  {
+    title: "Deployment Rollout Failure: Complete Diagnostic Guide",
+    description:
+      "Stuck rollouts and ProgressDeadlineExceeded — trace to the new ReplicaSet's pods and safely undo.",
+    href: "/kubernetes/rollout-stuck",
+    category: "kubernetes",
+    type: "guide",
+  },
+  {
     title: "kubectl Command Reference",
     description:
       "The commands you actually use during incidents — organized by task, with safety notes.",
@@ -216,6 +272,41 @@ export const kbItems: KbItem[] = [
     title: "Practice: DNS Resolution Failure",
     description: "NXDOMAIN on a ClusterIP service — find why the record is missing.",
     href: "/simulator/dns-resolution",
+    category: "incident-management",
+    type: "simulator",
+  },
+  {
+    title: "Practice: OOMKilled",
+    description: "Exit code 137 — find why the container keeps getting killed.",
+    href: "/simulator/oomkilled",
+    category: "incident-management",
+    type: "simulator",
+  },
+  {
+    title: "Practice: PVC Pending",
+    description: "An unbound claim blocks a StatefulSet — trace the StorageClass.",
+    href: "/simulator/pvc-pending",
+    category: "incident-management",
+    type: "simulator",
+  },
+  {
+    title: "Practice: Ingress 502",
+    description: "Follow a Bad Gateway from ingress to the dead container port.",
+    href: "/simulator/ingress-502",
+    category: "incident-management",
+    type: "simulator",
+  },
+  {
+    title: "Practice: RBAC Forbidden",
+    description: "A 403 on the API — find the missing verb or binding.",
+    href: "/simulator/rbac-forbidden",
+    category: "incident-management",
+    type: "simulator",
+  },
+  {
+    title: "Practice: Rollout Failure",
+    description: "A deployment stuck mid-rollout — find which new pod blocks it.",
+    href: "/simulator/rollout-stuck",
     category: "incident-management",
     type: "simulator",
   },

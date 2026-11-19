@@ -1,0 +1,87 @@
+## Symptoms
+
+- `kubectl rollout status` hangs: `Waiting for deployment "api" rollout to finish: 1 of 3 updated replicas are available`.
+- `kubectl get deploy` shows `READY 1/3` — old pods still running, new ReplicaSet stuck.
+- Sometimes `ProgressDeadlineExceeded` appears after ~10 minutes (default `progressDeadlineSeconds: 600`).
+
+The rollout isn't "slow" — the new ReplicaSet's pods can't become ready, and the deployment controller won't kill more old pods than `maxUnavailable` allows.
+
+## Common causes
+
+1. **New pods Pending** — the new spec requests resources/taints/affinity nothing satisfies. Most common.
+2. **Readiness probe never passes** — new pods run but stay 0/1; `maxUnavailable: 0` keeps old pods forever.
+3. **CrashLoopBackOff on new replicas** — bad image arg, config, env var.
+4. **ImagePullBackOff** — new tag doesn't exist or registry auth broke.
+5. **Progress deadline exceeded** — deployment gives up and reports the condition; pods keep trying.
+
+## Diagnosis
+
+### Step 1 — Find the new ReplicaSet and its pods
+
+<Safety level="readonly" /> `kubectl rollout status deploy/api -n example-ns`
+
+<Safety level="readonly" /> `kubectl get rs -n example-ns -l app=api`
+
+```
+api-7d5c9f    3   3   3   14d     ← old
+api-9f8b7c    1   1   0   8m      ← new: desired 1, ready 0
+```
+
+<Safety level="readonly" /> `kubectl get pods -n example-ns -l app=api`
+
+### Step 2 — Read the new pod's state
+
+<Safety level="readonly" /> `kubectl describe pod -n example-ns api-9f8b7c-x2klp`
+
+`Pending` → `FailedScheduling` events → scheduling problem. `Running` but `0/1` → probe problem. `CrashLoopBackOff`/`ImagePullBackOff` → workload problem.
+
+### Step 3 — Check the deployment's own conditions
+
+<Safety level="readonly" /> `kubectl describe deploy -n example-ns api | tail -8`
+
+```
+Conditions:
+  Type            Status  Reason
+  Progressing     False   ProgressDeadlineExceeded
+  Available       True    MinimumReplicasAvailable
+```
+
+`ProgressDeadlineExceeded` means the controller stopped waiting — the underlying cause is still in the pod state from step 2.
+
+## Root cause analysis
+
+| New pod state | Root cause | Follow-up guide |
+|---|---|---|
+| `Pending` + `FailedScheduling` | Scheduling (resources/taints/affinity/PVC) | [Pod Pending](/kubernetes/pod-pending), [PVC Pending](/kubernetes/pvc-pending) |
+| `Running`, `0/1`, probe events | Readiness probe fails | [Probe Generator](/tools/probe-generator) |
+| `CrashLoopBackOff` | New revision crashes | [CrashLoopBackOff](/kubernetes/crashloopbackoff), [OOMKilled](/kubernetes/oomkilled) |
+| `ImagePullBackOff` | Bad tag / registry auth | [ImagePullBackOff](/kubernetes/imagepullbackoff) |
+
+## Resolution
+
+- **Root-cause fix first** — diagnose the stuck pod via the matching guide above, then fix the deployment spec. <Safety level="modifying" />
+- **If a bad rollout is live and old pods are healthy:** <Safety level="modifying" /> `kubectl rollout undo deploy/api -n example-ns` — restores the previous revision immediately. This is a traffic-affecting change, not destructive.
+- **After ProgressDeadlineExceeded:** fix the cause, then `kubectl rollout restart` or let the controller retry — the condition clears on progress.
+- **Do NOT** `kubectl delete` old replicas to "force" the rollout — you lose your working baseline before the new version is proven.
+
+## Verification
+
+<Safety level="readonly" /> `kubectl rollout status deploy/api -n example-ns` — `deployment "api" successfully rolled out`.
+
+<Safety level="readonly" /> `kubectl get deploy -n example-ns api` — `READY 3/3`, `UP-TO-DATE 3`.
+
+## Prevention
+
+- Set explicit `progressDeadlineSeconds` and alert on `ProgressDeadlineExceeded` — stuck rollouts are silent otherwise.
+- Readiness probes calibrated to real startup time — use [Probe Generator](/tools/probe-generator) to get `initialDelaySeconds` right.
+- Practice the full trace in the [Rollout Failure simulator](/simulator/rollout-stuck).
+
+## Kubernetes version notes
+
+Applies to Kubernetes 1.28–1.34. Default `progressDeadlineSeconds` is 600s; `rollout undo` restores the previous ReplicaSet — revision history keeps the last 10 by default.
+
+## Related
+
+- [Pod Pending](/kubernetes/pod-pending) — most common stuck-rollout cause
+- [ImagePullBackOff](/kubernetes/imagepullbackoff)
+- [CrashLoopBackOff](/kubernetes/crashloopbackoff)

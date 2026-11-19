@@ -1,0 +1,88 @@
+## Symptoms
+
+- Pods restart under load with `CrashLoopBackOff` — but `describe` shows `Last State: Terminated, Reason: OOMKilled`.
+- Exit code **137** (128 + SIGKILL) in the container status.
+- The app works at low traffic and dies under load or during heavy operations (batch jobs, cache warmup, large responses).
+
+`OOMKilled` means the kernel's OOM killer terminated the container for exceeding its memory limit. It looks like CrashLoopBackOff but the cause is memory pressure, not application logic — the fix is different.
+
+## Common causes
+
+1. **Memory limit below real usage** — the most common cause; the limit is doing its job.
+2. **Memory leak** — usage climbs steadily to the limit, restart resets it, repeat. Sawtooth pattern on metrics.
+3. **Runtime heap doesn't respect the container limit** — JVM/Node defaults sized from host memory on older runtimes; heap + native exceeds the cgroup limit.
+4. **Node-level memory pressure** — the pod's own limit is fine but the node is exhausted and kubelet evicts.
+5. **No limit at all** — a pod with no memory limit can OOM the node instead.
+
+## Diagnosis
+
+### Step 1 — Confirm it's really OOM
+
+<Safety level="readonly" /> `kubectl describe pod -n example-ns web-6c8f9bb-2xklp`
+
+```
+Last State:     Terminated
+  Reason:       OOMKilled
+  Exit Code:    137
+```
+
+`OOMKilled` + 137 is definitive. `Error` + exit 1 is an app crash — different runbook.
+
+### Step 2 — Compare the limit to observed usage
+
+<Safety level="readonly" /> `kubectl get pod -n example-ns web-6c8f9bb-2xklp -o jsonpath='{.spec.containers[*].resources}'`
+
+<Safety level="readonly" /> `kubectl top pod -n example-ns web-6c8f9bb-2xklp --containers`
+
+Usage near the limit before death → genuine demand. Low usage → sudden spike or leak.
+
+### Step 3 — Check the restart pattern
+
+A high `RESTARTS` count with periodic crashes (every N minutes/hours) is the classic leak signature. A first crash right after a deploy or config change points at new demand — check `BATCH_SIZE`-style knobs.
+
+### Step 4 — Read the logs just before death
+
+<Safety level="readonly" /> `kubectl logs -n example-ns web-6c8f9bb-2xklp --previous --tail=50`
+
+OOM kills are abrupt — logs often end mid-line. A clean `OutOfMemoryError` (Java) or `heap out of memory` (Node) means the *runtime* hit its own limit first — fix runtime flags, not just the cgroup limit.
+
+## Root cause analysis
+
+| Evidence | Root cause |
+|---|---|
+| Steady memory growth over hours | Leak — raising the limit only delays death |
+| Dies at the same threshold under load | Limit below real peak demand |
+| JVM/Node heap error in `--previous` logs | Runtime limit < container limit — fix flags |
+| Node `MemoryPressure: True` + evictions | Node exhaustion, not just this pod |
+
+## Resolution
+
+- **Under-provisioned limit:** raise `resources.limits.memory` to observed peak + ~25% headroom. <Safety level="modifying" /> Keep `requests` at typical usage — requests schedule, limits kill.
+- **Leak:** raising the limit is a stopgap for blast-radius control while you profile (heap dump, pprof). Record the restart pattern in the incident timeline.
+- **Runtime mismatch:** JVM → `-XX:MaxRAMPercentage=75` (JDK 10+) or `-Xmx` ≈ 75% of limit; Node → `--max-old-space-size`.
+- **Node pressure:** check `kubectl describe node` — reduce noisy neighbors' limits or move the workload.
+
+## Verification
+
+<Safety level="readonly" /> `kubectl get pod -n example-ns web-6c8f9bb-2xklp` — `RESTARTS` stops incrementing.
+
+<Safety level="readonly" /> `kubectl top pod -n example-ns web-6c8f9bb-2xklp` — usage stable below the new limit.
+
+<Safety level="readonly" /> `kubectl describe pod -n example-ns web-6c8f9bb-2xklp | grep "Last State"` — no longer OOMKilled.
+
+## Prevention
+
+- Always set both request **and** limit — a limitless pod is a node-killer.
+- Alert on restart count and memory >80% of limit; OOM is visible before it kills.
+- Load-test with representative memory profiles before launch; JVM workloads need container-aware flags, non-optional.
+- The [Resource Calculator](/tools/resource-calculator) helps sum requests/limits across containers and replicas.
+
+## Kubernetes version notes
+
+Tested guidance applies to Kubernetes 1.28–1.34. `kubectl top` requires metrics-server; without it, use `kubectl describe node` allocated resources. Exit code 137 semantics are POSIX-stable.
+
+## Related
+
+- [CrashLoopBackOff guide](/kubernetes/crashloopbackoff) — OOM is one of its causes
+- [Pod Pending](/kubernetes/pod-pending) — when requests exceed node capacity
+- [Simulator: OOMKilled](/simulator/oomkilled) — practice the diagnosis

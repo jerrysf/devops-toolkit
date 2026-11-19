@@ -43,6 +43,11 @@ function saveProgress(slug: string, p: Progress) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
 }
 
+type SimStatus = "not-started" | "in-progress" | "completed";
+
+// Event-handler timestamps — not render-scoped values.
+const nowMs = () => Date.now();
+
 export function SimulatorTerminal({ scenario }: { scenario: SimScenario }) {
   const [lines, setLines] = useState<TermLine[]>(() =>
     scenario.welcome.map((text) => ({ kind: "info" as const, text })),
@@ -50,6 +55,9 @@ export function SimulatorTerminal({ scenario }: { scenario: SimScenario }) {
   const [input, setInput] = useState("");
   const [history, setHistory] = useState<string[]>([]);
   const [histIdx, setHistIdx] = useState(-1);
+  const [status, setStatus] = useState<SimStatus>("not-started");
+  const startedAtRef = useRef<number | null>(null);
+  const [elapsedSec, setElapsedSec] = useState<number | null>(null);
   const [hintsUsed, setHintsUsed] = useState(0);
   const [commandsRun, setCommandsRun] = useState(0);
   const [wrongGuesses, setWrongGuesses] = useState(0);
@@ -58,12 +66,17 @@ export function SimulatorTerminal({ scenario }: { scenario: SimScenario }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const score = Math.max(10, 100 - hintsUsed * 15 - wrongGuesses * 10);
+  // Final score — computed once at completion, not displayed while
+  // playing. Base 100; -15/hint, -10/wrong guess, floor 10.
+  const finalScore = Math.max(10, 100 - hintsUsed * 15 - wrongGuesses * 10);
 
   const reset = useCallback(() => {
     setLines([
       ...scenario.welcome.map((text) => ({ kind: "info" as const, text })),
     ]);
+    setStatus("not-started");
+    startedAtRef.current = null;
+    setElapsedSec(null);
     setHintsUsed(0);
     setCommandsRun(0);
     setWrongGuesses(0);
@@ -72,6 +85,14 @@ export function SimulatorTerminal({ scenario }: { scenario: SimScenario }) {
     setHistory([]);
     setHistIdx(-1);
   }, [scenario]);
+
+  function begin() {
+    if (status === "not-started") {
+      setStatus("in-progress");
+      startedAtRef.current = nowMs();
+      trackEvent("simulator_started", { scenario: scenario.slug });
+    }
+  }
 
   useEffect(() => {
     trackEvent("tool_opened", { tool: "simulator", scenario: scenario.slug });
@@ -85,7 +106,10 @@ export function SimulatorTerminal({ scenario }: { scenario: SimScenario }) {
     const raw = input;
     setInput("");
     setHistIdx(-1);
-    if (raw.trim()) setHistory((h) => [...h, raw]);
+    if (raw.trim()) {
+      setHistory((h) => [...h, raw]);
+      begin();
+    }
 
     const parsed = parseCommand(raw);
     const output = execute(parsed, scenario.cluster);
@@ -113,15 +137,23 @@ export function SimulatorTerminal({ scenario }: { scenario: SimScenario }) {
   function submitDiagnosis(id: string) {
     const opt = scenario.diagnosis.find((d) => d.id === id);
     if (!opt) return;
+    begin();
     if (opt.correct) {
+      const elapsed = startedAtRef.current
+        ? Math.round((nowMs() - startedAtRef.current) / 1000)
+        : 0;
+      setElapsedSec(elapsed);
+      setStatus("completed");
       setSolved(opt.explanation);
       setShowDiagnose(false);
-      saveProgress(scenario.slug, { completed: true, bestScore: score });
-      trackEvent("tool_used", {
-        tool: "simulator",
+      saveProgress(scenario.slug, { completed: true, bestScore: finalScore });
+      trackEvent("simulator_completed", {
         scenario: scenario.slug,
-        outcome: "solved",
-        score,
+        score: finalScore,
+        hints: hintsUsed,
+        commands: commandsRun,
+        wrong_guesses: wrongGuesses,
+        seconds: elapsed,
       });
     } else {
       setWrongGuesses((n) => n + 1);
@@ -130,6 +162,12 @@ export function SimulatorTerminal({ scenario }: { scenario: SimScenario }) {
         { kind: "warn", text: `Not quite — ${opt.explanation}` },
       ]);
     }
+  }
+
+  function fmtElapsed(sec: number): string {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return m > 0 ? `${m}m ${s}s` : `${s}s`;
   }
 
   return (
@@ -158,6 +196,7 @@ export function SimulatorTerminal({ scenario }: { scenario: SimScenario }) {
             <button
               type="button"
               onClick={() => {
+                begin();
                 setLines((l) => [
                   ...l,
                   {
@@ -204,7 +243,8 @@ export function SimulatorTerminal({ scenario }: { scenario: SimScenario }) {
             <div className="mt-4 rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-4 font-sans">
               <p className="flex items-center gap-2 font-medium text-emerald-300">
                 <Trophy className="size-4" /> Correct — scenario solved. Score:{" "}
-                {score}/100
+                {finalScore}/100
+                {elapsedSec !== null && ` · ${fmtElapsed(elapsedSec)}`}
               </p>
               <p className="mt-2 text-sm text-emerald-100/90">{solved}</p>
             </div>
@@ -267,10 +307,31 @@ export function SimulatorTerminal({ scenario }: { scenario: SimScenario }) {
       <div className="rounded-xl border border-border bg-card p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-medium">Ready to diagnose?</p>
+            <p className="text-sm font-medium">
+              {status === "not-started"
+                ? "Investigate the incident, then submit your diagnosis"
+                : status === "in-progress"
+                  ? "Ready to diagnose?"
+                  : "Diagnosis complete"}
+            </p>
             <p className="text-xs text-muted-foreground">
-              Score: {score}/100 · {commandsRun} diagnostic commands ·{" "}
-              {hintsUsed} hints · {wrongGuesses} wrong guesses
+              {status === "not-started" && (
+                <>Not started — run commands to begin investigating.</>
+              )}
+              {status === "in-progress" && (
+                <>
+                  In progress · {commandsRun} diagnostic commands · {hintsUsed}{" "}
+                  hints · {wrongGuesses} wrong guesses · score shown on
+                  completion
+                </>
+              )}
+              {status === "completed" && (
+                <>
+                  Final score {finalScore}/100 · {commandsRun} commands ·{" "}
+                  {hintsUsed} hints · {wrongGuesses} wrong guesses
+                  {elapsedSec !== null && ` · ${fmtElapsed(elapsedSec)}`}
+                </>
+              )}
             </p>
           </div>
           {!solved && (

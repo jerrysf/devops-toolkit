@@ -1,0 +1,35 @@
+{
+  "product": "Kubernetes Troubleshooting Toolkit",
+  "edition": "Launch Edition",
+  "version": "1.0.0",
+  "releaseDate": "2026-01-15",
+  "compatibility": {
+    "kubernetes": "1.28–1.34",
+    "kubectl": "1.28+",
+    "notes": "Diagnostic workflows apply to older versions; exact output text may differ."
+  },
+  "files": [
+    { "path": "runbooks/crashloopbackoff.md", "format": "markdown", "reviewStatus": "reviewed" },
+    { "path": "runbooks/imagepullbackoff.md", "format": "markdown", "reviewStatus": "reviewed" },
+    { "path": "runbooks/node-not-ready.md", "format": "markdown", "reviewStatus": "reviewed" },
+    { "path": "runbooks/pod-pending.md", "format": "markdown", "reviewStatus": "reviewed" },
+    { "path": "runbooks/oomkilled.md", "format": "markdown", "reviewStatus": "reviewed" },
+    { "path": "runbooks/dns-resolution.md", "format": "markdown", "reviewStatus": "reviewed" },
+    { "path": "kubectl-reference.md", "format": "markdown", "reviewStatus": "reviewed" },
+    { "path": "checklists/incident-response.md", "format": "markdown", "reviewStatus": "reviewed" },
+    { "path": "checklists/post-incident-verification.md", "format": "markdown", "reviewStatus": "reviewed" },
+    { "path": "examples/startup-probe.yaml", "format": "yaml", "reviewStatus": "reviewed" },
+    { "path": "examples/image-pull-secret.yaml", "format": "yaml", "reviewStatus": "reviewed" },
+    { "path": "LICENSE.md", "format": "markdown", "reviewStatus": "reviewed" },
+    { "path": "handbook.html", "format": "html", "reviewStatus": "generated", "notes": "Compiled printable handbook (print to PDF)" }
+  ],
+  "validationLevel": {
+    "level": "static-review",
+    "description": "All commands reviewed for correctness against Kubernetes 1.28–1.34 API and CLI output formats. Diagnostic workflows exercised in the site's simulator against deterministic mock clusters. Not executed against production clusters.",
+    "simulatorCovered": ["crashloopbackoff", "imagepullbackoff", "pod-pending", "node-not-ready", "dns-resolution"]
+  },
+  "packaging": {
+    "command": "node scripts/build-product.mjs",
+    "output": "dist/kubernetes-toolkit-v{version}.zip"
+  }
+}

@@ -21,7 +21,7 @@ const whyItems = [
   {
     icon: Terminal,
     title: "Commands you can trust",
-    text: "Every diagnostic command is explained, marked read-only or mutating, and verified against real clusters — not scraped from forums.",
+    text: "Every diagnostic command is explained, marked read-only or mutating, and reviewed against current Kubernetes versions — not scraped from forums.",
   },
   {
     icon: BookOpenCheck,

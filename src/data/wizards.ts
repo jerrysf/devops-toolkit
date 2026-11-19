@@ -878,6 +878,394 @@ export const wizardTrees: WizardTree[] = [
       },
     },
   },
+  {
+    slug: "oomkilled",
+    title: "OOMKilled",
+    description: "Container killed by the OOM killer — exit code 137.",
+    start: "q-confirm",
+    nodes: {
+      "q-confirm": {
+        id: "q-confirm",
+        question: "Is the pod actually dying with OOMKilled?",
+        hint: "kubectl describe pod <pod> -n <ns> — Last State should show Reason: OOMKilled, Exit Code: 137.",
+        options: [
+          { label: "Yes — OOMKilled / exit 137", next: "q-pattern" },
+          { label: "It's a different failure mode", next: "r-wrong-scenario" },
+        ],
+      },
+      "q-pattern": {
+        id: "q-pattern",
+        question: "What does the restart pattern look like over time?",
+        hint: "kubectl get pod — high RESTARTS at steady intervals suggests a leak; a first crash under load or after a deploy suggests new demand.",
+        options: [
+          { label: "Restarts periodically — memory climbs then dies", next: "r-leak" },
+          { label: "Died once under load or right after a deploy", next: "q-limit-check" },
+          { label: "Only some nodes / whole node under pressure", next: "r-node-pressure" },
+        ],
+      },
+      "q-limit-check": {
+        id: "q-limit-check",
+        question: "Is observed memory usage near the container limit?",
+        hint: "kubectl top pod <pod> -n <ns> vs kubectl get pod -o jsonpath='{.spec.containers[*].resources.limits.memory}'.",
+        options: [
+          { label: "Yes — usage reaches the limit", next: "r-limit" },
+          { label: "No — dies well below the limit", next: "r-runtime" },
+        ],
+      },
+    },
+    results: {
+      "r-wrong-scenario": {
+        id: "r-wrong-scenario",
+        title: "Different failure mode — not OOM",
+        explanation:
+          "If describe shows Error with a non-137 exit code, Pending, or ImagePullBackOff, use the matching guide instead — OOM fixes won't help.",
+        confidence: "high",
+        commands: [
+          {
+            command: "kubectl describe pod <pod> -n <ns>",
+            description: "Read Last State and Events to pick the right failure mode",
+            safety: "readonly",
+          },
+        ],
+        nextSteps:
+          "Switch to the CrashLoopBackOff, Pod Pending, or ImagePullBackOff wizard depending on the status.",
+      },
+      "r-leak": {
+        id: "r-leak",
+        title: "Memory leak — steady growth to the limit",
+        explanation:
+          "Periodic OOM with usage climbing between restarts is the classic leak signature. Raising the limit delays the crash but doesn't fix it.",
+        confidence: "high",
+        commands: [
+          {
+            command: "kubectl top pod <pod> -n <ns>",
+            description: "Watch usage climb over time (needs metrics-server)",
+            safety: "readonly",
+          },
+          {
+            command: "kubectl logs <pod> -n <ns> --previous --tail=50",
+            description: "Look for leak clues before the kill",
+            safety: "readonly",
+          },
+          {
+            command: "kubectl set resources deployment/<name> -n <ns> --limits=memory=2Gi",
+            description: "Temporary: raise limit to reduce restart blast radius while profiling",
+            safety: "modify",
+          },
+        ],
+        nextSteps:
+          "Profile the app (heap dump, pprof) to find the leak. The limit raise is a stopgap, not the fix.",
+      },
+      "r-limit": {
+        id: "r-limit",
+        title: "Memory limit below real demand",
+        explanation:
+          "The container genuinely needs more than its limit — the limit is doing its job, it's just too low.",
+        confidence: "high",
+        commands: [
+          {
+            command: "kubectl top pod <pod> -n <ns>",
+            description: "Measure real peak usage before sizing",
+            safety: "readonly",
+          },
+          {
+            command: "kubectl set resources deployment/<name> -n <ns> --limits=memory=1Gi --requests=memory=512Mi",
+            description: "Set limit ≈ peak + 25% headroom (adjust to your measurements)",
+            safety: "modify",
+          },
+        ],
+        nextSteps:
+          "Re-measure after the change — keep requests at typical usage so scheduling isn't inflated.",
+      },
+      "r-runtime": {
+        id: "r-runtime",
+        title: "Runtime limit hit before cgroup limit",
+        explanation:
+          "Dying below the container limit often means the JVM/Node heap limit is sized from host memory on older runtimes — the runtime OOMs first.",
+        confidence: "medium",
+        commands: [
+          {
+            command: "kubectl logs <pod> -n <ns> --previous | grep -i 'outofmemory\\|heap'",
+            description: "Look for runtime-level OOM errors in the last logs",
+            safety: "readonly",
+          },
+          {
+            command: "kubectl get pod <pod> -n <ns> -o jsonpath='{.spec.containers[*].env}'",
+            description: "Check for JAVA_TOOL_OPTIONS / NODE_OPTIONS heap flags",
+            safety: "readonly",
+          },
+        ],
+        nextSteps:
+          "JVM: set -XX:MaxRAMPercentage=75. Node: --max-old-space-size ≈ 75% of the container limit.",
+      },
+      "r-node-pressure": {
+        id: "r-node-pressure",
+        title: "Node memory pressure — eviction, not a bad pod",
+        explanation:
+          "If the node itself is under MemoryPressure, kubelet evicts pods regardless of their own limits.",
+        confidence: "medium",
+        commands: [
+          {
+            command: "kubectl describe node <node> | grep -A10 Conditions",
+            description: "Check for MemoryPressure: True",
+            safety: "readonly",
+          },
+          {
+            command: "kubectl get events -n <ns> --field-selector reason=Evicted",
+            description: "Confirm eviction events",
+            safety: "readonly",
+          },
+        ],
+        nextSteps:
+          "Reduce noisy neighbors' limits or move the workload — the node is exhausted, not your pod.",
+      },
+    },
+  },
+  {
+    slug: "containercreating",
+    title: "ContainerCreating",
+    description: "Pod stuck in ContainerCreating — never reaches Running.",
+    start: "q-duration",
+    nodes: {
+      "q-duration": {
+        id: "q-duration",
+        question: "How long has the pod been in ContainerCreating?",
+        hint: "kubectl get pod <pod> -n <ns> — under a minute is normal (image pull, volume mount); several minutes is stuck.",
+        options: [
+          { label: "Minutes — clearly stuck", next: "q-events" },
+          { label: "Under a minute", next: "r-wait" },
+        ],
+      },
+      "q-events": {
+        id: "q-events",
+        question: "What do the pod's events show?",
+        hint: "kubectl describe pod <pod> -n <ns> — the Events section names the blocker directly.",
+        options: [
+          { label: "FailedMount / volume attach errors", next: "r-volume" },
+          { label: "FailedCreatePodSandBox / CNI errors", next: "r-cni" },
+          { label: "Image pull in progress or failing", next: "r-imagepull" },
+          { label: "Secret or ConfigMap not found", next: "r-missing-ref" },
+        ],
+      },
+    },
+    results: {
+      "r-wait": {
+        id: "r-wait",
+        title: "Normal startup — still provisioning",
+        explanation:
+          "Large image pulls and volume attachments take time. ContainerCreating under ~60s is usually just the kubelet working.",
+        confidence: "high",
+        commands: [
+          {
+            command: "kubectl describe pod <pod> -n <ns> | tail -15",
+            description: "Watch the pull/mount events progress",
+            safety: "readonly",
+          },
+        ],
+        nextSteps:
+          "Wait for the pull to finish. If it stalls past a couple of minutes, re-check events — it becomes one of the stuck cases.",
+      },
+      "r-volume": {
+        id: "r-volume",
+        title: "Volume mount failure — FailedMount",
+        explanation:
+          "The kubelet can't attach or mount a volume — unbound PVC, unavailable CSI driver, or a missing Secret/ConfigMap source.",
+        confidence: "high",
+        commands: [
+          {
+            command: "kubectl get pvc -n <ns>",
+            description: "Check claims referenced by the pod are Bound",
+            safety: "readonly",
+          },
+          {
+            command: "kubectl get events -n <ns> --field-selector reason=FailedMount",
+            description: "Read the exact mount error",
+            safety: "readonly",
+          },
+        ],
+        nextSteps:
+          "Unbound PVC → see the PVC Pending guide. Missing Secret/ConfigMap → create it before the pod references it.",
+      },
+      "r-cni": {
+        id: "r-cni",
+        title: "Pod sandbox / CNI failure",
+        explanation:
+          "FailedCreatePodSandBox means the container runtime or CNI plugin can't create the pod's network namespace — a node-level problem.",
+        confidence: "high",
+        commands: [
+          {
+            command: "kubectl describe pod <pod> -n <ns> | grep -i sandbox",
+            description: "Read the sandbox creation error",
+            safety: "readonly",
+          },
+          {
+            command: "kubectl get pods -n kube-system -o wide --field-selector spec.nodeName=<node>",
+            description: "Check CNI/runtime health on that node",
+            safety: "readonly",
+          },
+        ],
+        nextSteps:
+          "If every pod on the node fails sandbox creation, cordon+drain the node and investigate its CNI plugin.",
+      },
+      "r-imagepull": {
+        id: "r-imagepull",
+        title: "Image pull blocking startup",
+        explanation:
+          "Pull still in progress or failing — large images on cold nodes take time; pull failures surface as ErrImagePull.",
+        confidence: "high",
+        commands: [
+          {
+            command: "kubectl describe pod <pod> -n <ns> | grep -i pull",
+            description: "Check pull progress or failure events",
+            safety: "readonly",
+          },
+        ],
+        nextSteps:
+          "Failing pulls → switch to the ImagePullBackOff wizard for the registry/tag/auth diagnosis.",
+      },
+      "r-missing-ref": {
+        id: "r-missing-ref",
+        title: "Missing Secret or ConfigMap reference",
+        explanation:
+          "The pod spec references a Secret or ConfigMap that doesn't exist in the namespace — kubelet can't assemble the container.",
+        confidence: "high",
+        commands: [
+          {
+            command: "kubectl get secret,configmap -n <ns>",
+            description: "List what actually exists",
+            safety: "readonly",
+          },
+          {
+            command: "kubectl get pod <pod> -n <ns> -o yaml | grep -B2 -A2 'secretName\\|configMapKeyRef'",
+            description: "Find the referenced names in the spec",
+            safety: "readonly",
+          },
+        ],
+        nextSteps:
+          "Create the missing resource or fix the reference — often a name drifted between environments.",
+      },
+    },
+  },
+  {
+    slug: "error",
+    title: "Error (generic container failure)",
+    description: "Pod in Error state — exited non-zero without looping yet.",
+    start: "q-exit",
+    nodes: {
+      "q-exit": {
+        id: "q-exit",
+        question: "What exit code does the terminated container show?",
+        hint: "kubectl get pod <pod> -n <ns> -o jsonpath='{.status.containerStatuses[*].lastState}' — the exit code narrows everything.",
+        options: [
+          { label: "1 — generic application error", next: "q-logs" },
+          { label: "137 — OOMKilled", next: "r-oom" },
+          { label: "126/127 — command not found", next: "r-entrypoint" },
+          { label: "0 — clean exit (Completed)", next: "r-exit0" },
+        ],
+      },
+      "q-logs": {
+        id: "q-logs",
+        question: "Do the container logs name the failure?",
+        hint: "kubectl logs <pod> -n <ns> — or --previous if it already restarted.",
+        options: [
+          { label: "Yes — config/dependency/exception error", next: "r-app-error" },
+          { label: "Logs are empty or unhelpful", next: "r-no-logs" },
+        ],
+      },
+    },
+    results: {
+      "r-app-error": {
+        id: "r-app-error",
+        title: "Application error — log names the cause",
+        explanation:
+          "The process exited 1 after an error the logs already describe — missing config, failed dependency, or an unhandled exception.",
+        confidence: "high",
+        commands: [
+          {
+            command: "kubectl logs <pod> -n <ns> --previous",
+            description: "Read the full failure output",
+            safety: "readonly",
+          },
+          {
+            command: "kubectl get pod <pod> -n <ns> -o yaml | grep -A15 'env:'",
+            description: "Check env vars and valueFrom references",
+            safety: "readonly",
+          },
+        ],
+        nextSteps:
+          "Fix the named cause — missing env/ConfigMap/Secret, unreachable dependency, or the app bug itself.",
+      },
+      "r-oom": {
+        id: "r-oom",
+        title: "OOMKilled — switch to the OOM guide",
+        explanation:
+          "Exit 137 is a memory kill, not an app error — the diagnosis path is different (limits, leaks, node pressure).",
+        confidence: "high",
+        commands: [
+          {
+            command: "kubectl top pod <pod> -n <ns>",
+            description: "Check memory usage against the limit",
+            safety: "readonly",
+          },
+        ],
+        nextSteps:
+          "Follow the OOMKilled wizard — exit 137 is its own failure mode.",
+      },
+      "r-entrypoint": {
+        id: "r-entrypoint",
+        title: "Bad entrypoint — command can't run",
+        explanation:
+          "126/127 means the command doesn't exist or isn't executable — a command/args typo or missing binary in the image.",
+        confidence: "high",
+        commands: [
+          {
+            command: "kubectl get pod <pod> -n <ns> -o jsonpath='{.spec.containers[*].command}{\" \"}{.spec.containers[*].args}'",
+            description: "Read the exact command the pod runs",
+            safety: "readonly",
+          },
+        ],
+        nextSteps:
+          "Fix command/args in the spec or the image entrypoint — the binary must exist and be executable.",
+      },
+      "r-exit0": {
+        id: "r-exit0",
+        title: "Clean exit — Completed, not an error",
+        explanation:
+          "Exit 0 means the process finished successfully. Under restartPolicy: Always it will restart — likely a Job-shaped task in a Deployment.",
+        confidence: "high",
+        commands: [
+          {
+            command: "kubectl get pod <pod> -n <ns> -o jsonpath='{.spec.restartPolicy}'",
+            description: "Check whether the workload expects long-running processes",
+            safety: "readonly",
+          },
+        ],
+        nextSteps:
+          "Move finite tasks to a Job/CronJob, or keep the process running as a server.",
+      },
+      "r-no-logs": {
+        id: "r-no-logs",
+        title: "No usable logs — widen the net",
+        explanation:
+          "Empty logs usually mean the process died before writing output — check events and the container's startup command next.",
+        confidence: "medium",
+        commands: [
+          {
+            command: "kubectl describe pod <pod> -n <ns>",
+            description: "Events may show mount/probe/entrypoint failures",
+            safety: "readonly",
+          },
+          {
+            command: "kubectl get pod <pod> -n <ns> -o yaml | grep -A5 'command\\|args'",
+            description: "Verify the startup command is what you expect",
+            safety: "readonly",
+          },
+        ],
+        nextSteps:
+          "If events are clean and the command looks right, exec into a debug container or add temporary verbose logging.",
+      },
+    },
+  },
 ];
 
 export function getWizard(slug: string): WizardTree | undefined {

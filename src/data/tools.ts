@@ -4,6 +4,11 @@ import {
   Clock,
   FileCheck2,
   Gauge,
+  KeyRound,
+  Network,
+  HeartPulse,
+  Scale,
+  CalendarClock,
   Terminal,
 } from "lucide-react";
 
@@ -41,6 +46,51 @@ export const tools: ToolMeta[] = [
       "Sum CPU/memory requests and limits across containers and replicas. Unit conversion and sanity checks included.",
     icon: Gauge,
     published: true,
+  },
+  {
+    slug: "rbac-generator",
+    title: "RBAC Generator",
+    description:
+      "Generate Role/ClusterRole and binding YAML with least-privilege warnings — wildcards, secrets access, cluster-scope writes all flagged.",
+    icon: KeyRound,
+    published: true,
+    tag: "new",
+  },
+  {
+    slug: "netpol-generator",
+    title: "NetworkPolicy Generator",
+    description:
+      "Build ingress/egress policies with pod, namespace, and IP-block selectors — default-deny and DNS egress explained.",
+    icon: Network,
+    published: true,
+    tag: "new",
+  },
+  {
+    slug: "probe-generator",
+    title: "Probe Generator",
+    description:
+      "Liveness, readiness, and startup probes — httpGet, tcpSocket, exec, grpc — with timing explanations and mistake warnings.",
+    icon: HeartPulse,
+    published: true,
+    tag: "new",
+  },
+  {
+    slug: "hpa-calculator",
+    title: "HPA Calculator",
+    description:
+      "Model autoscaling/v2 replica counts from observed CPU usage and generate the HPA manifest. Estimates, not sizing rules.",
+    icon: Scale,
+    published: true,
+    tag: "new",
+  },
+  {
+    slug: "cronjob-generator",
+    title: "CronJob Generator",
+    description:
+      "Valid batch/v1 CronJob YAML — schedule validation, concurrency policy, deadlines, history limits.",
+    icon: CalendarClock,
+    published: true,
+    tag: "new",
   },
   {
     slug: "yaml-validator",

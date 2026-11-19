@@ -1,0 +1,92 @@
+## Symptoms
+
+- Pod stuck `Pending` with event `pod has unbound immediate PersistentVolumeClaims`.
+- `kubectl get pvc` shows the claim `Pending` for minutes+ — no VOLUME bound.
+- StatefulSet pods can't start; first replica holds everything back.
+
+## Common causes
+
+1. **StorageClass doesn't exist** — the claim names a class the cluster doesn't have (typo, or copied from another environment).
+2. **No default StorageClass** — claim has no `storageClassName` and nothing is marked default.
+3. **Provisioner unavailable** — the CSI driver for that class is down or uninstalled.
+4. **No matching PV (static provisioning)** — a pre-created PV doesn't match capacity/access modes/labels.
+5. **Zone/region mismatch** — WaitForFirstConsumer classes bind only when a pod schedules in the right zone.
+
+## Diagnosis
+
+### Step 1 — Confirm the PVC is the blocker
+
+<Safety level="readonly" /> `kubectl describe pod -n example-ns database-0`
+
+```
+Warning  FailedScheduling  pod has unbound immediate PersistentVolumeClaims
+```
+
+### Step 2 — Check the claim's status and events
+
+<Safety level="readonly" /> `kubectl get pvc -n example-ns`
+
+<Safety level="readonly" /> `kubectl describe pvc -n example-ns database-data-database-0`
+
+The events name the provisioning error directly:
+
+```
+Warning  ProvisioningFailed  failed to provision volume with StorageClass
+  "fast-ssd": storageclasses.storage.k8s.io "fast-ssd" not found
+```
+
+### Step 3 — List what classes actually exist
+
+<Safety level="readonly" /> `kubectl get storageclass`
+
+```
+NAME       PROVISIONER        RECLAIMPOLICY   VOLUMEBINDINGMODE      DEFAULT
+standard   ebs.csi.aws.com    Delete          WaitForFirstConsumer   true
+slow-hdd   ebs.csi.aws.com    Delete          Immediate              false
+```
+
+`fast-ssd` isn't there — the claim referenced a class from a different cluster's manifest.
+
+### Step 4 — If the class exists, check the provisioner
+
+<Safety level="readonly" /> `kubectl get pods -n kube-system | grep -i csi`
+
+Provisioner pods down → provisioning times out rather than fails fast.
+
+## Root cause analysis
+
+| Evidence | Root cause |
+|---|---|
+| `storageclasses ... "X" not found` | Claim names a nonexistent class |
+| No error, claim just Pending, no class named | No default StorageClass |
+| `waiting for a volume to be created` | Provisioner down or slow |
+| Bound PV exists but claim Pending | PV selector/capacity/accessMode mismatch |
+
+## Resolution
+
+- **Missing class:** point the claim at an existing class. For StatefulSets edit `volumeClaimTemplates[].spec.storageClassName` — note this requires recreating the StatefulSet's volume template. <Safety level="modifying" />
+- **Or create the class:** only if you actually need that provisioner/parameters — a StorageClass is a provisioning recipe, not a quota.
+- **No default:** set `storageClassName` explicitly or mark a class default. <Safety level="modifying" /> `kubectl annotate storageclass standard storageclass.kubernetes.io/is-default-class=true`
+- **Provisioner down:** fix the CSI driver deployment in kube-system — every PVC in that class is blocked.
+
+## Verification
+
+<Safety level="readonly" /> `kubectl get pvc -n example-ns` — `STATUS: Bound` with a VOLUME name.
+
+<Safety level="readonly" /> `kubectl get pod -n example-ns database-0 -o wide` — scheduled and Running.
+
+## Prevention
+
+- Template `storageClassName` as an environment-specific value — it's the field that differs most across clusters.
+- Alert on `ProvisioningFailed` events; volume failures block whole StatefulSets.
+- Practice in the [PVC Pending simulator](/simulator/pvc-pending).
+
+## Kubernetes version notes
+
+Applies to Kubernetes 1.28–1.34. `WaitForFirstConsumer` binding means a claim stays Pending until a pod needs it — that's normal, not a bug.
+
+## Related
+
+- [Pod Pending](/kubernetes/pod-pending) — unbound PVC is one of its causes
+- [Manifest Validator](/tools/manifest-validator) — checks PVC required fields
+- [Node NotReady](/kubernetes/node-not-ready)

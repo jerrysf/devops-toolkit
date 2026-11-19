@@ -2,11 +2,11 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { SimulatorTerminal } from "@/components/simulator-terminal";
-import { getSimScenario, simScenarios } from "@/data/simulator";
+import { getSimScenario, allSimScenarios } from "@/data/simulator";
 import { absoluteUrl } from "@/lib/site";
 
 export function generateStaticParams() {
-  return simScenarios.map((s) => ({ scenario: s.slug }));
+  return allSimScenarios.map((s) => ({ scenario: s.slug }));
 }
 
 export async function generateMetadata({

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, Terminal } from "lucide-react";
 import { Breadcrumbs } from "@/components/breadcrumbs";
-import { simScenarios } from "@/data/simulator";
+import { allSimScenarios } from "@/data/simulator";
 import { absoluteUrl } from "@/lib/site";
 import { cn } from "@/lib/utils";
 
@@ -36,7 +36,7 @@ export default function SimulatorIndex() {
       </header>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        {simScenarios.map((s) => (
+        {allSimScenarios.map((s) => (
           <Link
             key={s.slug}
             href={`/simulator/${s.slug}`}

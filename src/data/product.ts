@@ -17,19 +17,19 @@ export const product = {
   tagline:
     "A field manual for production Kubernetes incidents — structured runbooks, verified commands, and checklists you can use at 3 a.m.",
   contents: [
-    "PDF troubleshooting handbook (printable, offline-friendly)",
-    "Markdown runbooks covering the most common production failure modes",
+    "Printable handbook (HTML, print-to-PDF friendly)",
+    "Six Markdown runbooks covering the most common production failure modes",
     "Annotated kubectl command reference organized by symptom",
     "YAML examples for probes, resources, and common fixes",
-    "Printable incident-response checklists",
+    "Incident-response and post-incident verification checklists",
   ],
-  formats: ["PDF", "Markdown", "YAML"],
+  formats: ["Markdown", "HTML (printable)", "YAML"],
   runbookCount: 6,
   compatibility: "Kubernetes 1.28+, kubectl 1.28+, any CNCF-conformant cluster",
   faq: [
     {
       q: "What exactly do I get after purchase?",
-      a: "An immediate download link from the checkout provider containing a ZIP archive: the PDF handbook, Markdown runbooks, YAML examples, and checklists. Yours to keep — no DRM, no subscription required.",
+      a: "An immediate download link from the checkout provider containing a ZIP archive: six Markdown runbooks, the kubectl command reference, two checklists, YAML examples, and a printable handbook (HTML you can print to PDF). Yours to keep — no DRM, no subscription required.",
     },
     {
       q: "Is this a subscription?",

@@ -38,6 +38,11 @@ export default function ToolsIndex() {
             <span>
               <span className="flex items-center gap-2 font-medium">
                 {tool.title}
+                {tool.tag && (
+                  <span className="rounded-full border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-primary">
+                    {tool.tag}
+                  </span>
+                )}
                 <ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
               </span>
               <span className="mt-1 block text-sm text-muted-foreground">

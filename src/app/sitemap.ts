@@ -3,7 +3,7 @@ import { siteConfig } from "@/lib/site";
 import { publishedArticles } from "@/data/articles";
 import { tools } from "@/data/tools";
 import { wizardTrees } from "@/data/wizards";
-import { simScenarios } from "@/data/simulator";
+import { allSimScenarios } from "@/data/simulator";
 import { kbCategories, kbItemsFor } from "@/data/kb";
 
 export default function sitemap(): MetadataRoute.Sitemap {
@@ -44,7 +44,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     url: `${siteConfig.url}/troubleshoot/wizard/${w.slug}`,
   }));
 
-  const simRoutes = simScenarios.map((s) => ({
+  const simRoutes = allSimScenarios.map((s) => ({
     url: `${siteConfig.url}/simulator/${s.slug}`,
   }));
 

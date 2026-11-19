@@ -17,7 +17,9 @@ export type AnalyticsEvent =
   | "purchase_cta_clicked"
   | "checkout_started"
   | "purchase_completed"
-  | "newsletter_signup";
+  | "newsletter_signup"
+  | "simulator_started"
+  | "simulator_completed";
 
 declare global {
   interface Window {

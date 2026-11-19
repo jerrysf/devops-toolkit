@@ -1,0 +1,90 @@
+## Symptoms
+
+- `kubectl` or application calls return `Error from server (Forbidden)`.
+- Messages like `pods "x" is forbidden: User "system:serviceaccount:ns:sa" cannot get resource "pods"`.
+- Apps that query the Kubernetes API (sidecars, controllers, agents) fail with 403s.
+
+## Common causes
+
+1. **No RoleBinding / ClusterRoleBinding** — a Role exists but nothing binds it to the identity.
+2. **Role doesn't cover the verb+resource** — e.g. Role grants `get` but the app calls `watch`.
+3. **Binding targets the wrong subject** — ServiceAccount name or namespace typo.
+4. **Namespaced vs cluster-scoped** — a Role can't grant cluster-scoped resources (`nodes`, `clusterroles`) or cross-namespace access.
+5. **Missing serviceAccountName** — the pod runs as `default`, not the SA you authorized.
+6. **Typos in resource names or API groups** — `pods` vs `pod`, missing `apps` group for deployments.
+
+## Diagnosis
+
+### Step 1 — Parse the error
+
+```
+deployments.apps "api" is forbidden:
+User "system:serviceaccount:example-ns:worker"
+cannot get resource "deployments" in API group "apps" in namespace "example-ns"
+```
+
+Everything needed is in the message: **who** (SA `worker`), **what** (`get deployments.apps`), **where** (`example-ns`).
+
+### Step 2 — Ask the API directly
+
+<Safety level="readonly" /> `kubectl auth can-i get deployments -n example-ns --as=system:serviceaccount:example-ns:worker`
+
+`no` confirms it. Then find the gap — list what the SA *can* do:
+
+<Safety level="readonly" /> `kubectl auth can-i --list -n example-ns --as=system:serviceaccount:example-ns:worker`
+
+### Step 3 — Check the pod is using the SA you think it is
+
+<Safety level="readonly" /> `kubectl get pod -n example-ns worker-abc -o jsonpath='{.spec.serviceAccountName}'`
+
+No `serviceAccountName` → pod runs as `default` — the RoleBinding may exist but binds a different SA.
+
+### Step 4 — Find what references the Role
+
+<Safety level="readonly" /> `kubectl get rolebindings -n example-ns -o wide`
+
+<Safety level="readonly" /> `kubectl describe rolebinding -n example-ns worker-reader`
+
+Check the `Subjects` — ServiceAccount name AND namespace must match the error's user exactly.
+
+## Root cause analysis
+
+| Evidence | Root cause |
+|---|---|
+| `can-i` → no, no RoleBindings exist | Role created but never bound |
+| Binding exists, subject namespace differs | SA namespace typo — binds a different identity |
+| Role has `get` but app needs `watch` | Missing verb |
+| Cluster resource denied via Role | Role can't grant cluster-scoped resources — needs ClusterRole |
+
+## Resolution
+
+Create the binding or fix the role — generate correct YAML with the [RBAC Generator](/tools/rbac-generator):
+
+- **Missing binding:** create a RoleBinding naming the SA, its namespace, and the Role.
+- **Missing verb/resource:** edit the Role to add the verb+resource — patch rather than broaden to `*`.
+- **Cluster scope:** use ClusterRole + ClusterRoleBinding for cluster resources; note this grants across *all* namespaces.
+- **Wrong SA:** fix `spec.serviceAccountName` on the workload — <Safety level="modifying" /> requires pod recreation.
+
+Least privilege: grant exactly the verbs+resources the app needs. `*` is a code review flag, not a shortcut.
+
+## Verification
+
+<Safety level="readonly" /> `kubectl auth can-i get deployments -n example-ns --as=system:serviceaccount:example-ns:worker` — `yes`.
+
+Then the app's next API call succeeds — check its logs for the 403 stopping.
+
+## Prevention
+
+- Keep RBAC next to the workload manifest in version control; review permissions like code.
+- `kubectl auth can-i` in CI validates that bindings exist before deploy.
+- Practice the trace in the [RBAC Forbidden simulator](/simulator/rbac-forbidden).
+
+## Kubernetes version notes
+
+Applies to Kubernetes 1.28–1.34, rbac.authorization.k8s.io/v1. `kubectl auth can-i --as` requires impersonation permissions — use `--as-group`/audit logs if you can't impersonate.
+
+## Related
+
+- [RBAC Generator](/tools/rbac-generator) — build least-privilege Roles and Bindings
+- [kubectl Command reference](/kubernetes/kubectl-commands)
+- [Deployment Rollout Failure](/kubernetes/rollout-stuck)

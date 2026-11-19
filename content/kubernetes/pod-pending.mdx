@@ -1,0 +1,91 @@
+## Symptoms
+
+- `kubectl get pods` shows `STATUS: Pending` with `RESTARTS: 0`, and `-o wide` shows no `NODE` assigned.
+- New replicas never become Ready; Deployments hang at `N-1/N`.
+- Nothing is "broken" in the workload — the scheduler can't place it.
+
+## Common causes
+
+1. **Insufficient node resources** — requests exceed what any node has free.
+2. **Untolerated taints** — control-plane `NoSchedule`, dedicated node pools.
+3. **nodeSelector / affinity matching nothing** — labels no node has, AZ that doesn't exist.
+4. **Unbound PVC** — `pod has unbound immediate PersistentVolumeClaims`.
+5. **ResourceQuota exhausted** — usually rejects at admission (`forbidden: exceeded quota`) before Pending even appears.
+6. **Scheduler unhealthy** — rare; check whether *any* pods schedule.
+
+## Diagnosis
+
+### Step 1 — Read the scheduling failure
+
+<Safety level="readonly" /> `kubectl describe pod -n example-ns report-worker-9f6d2-px7qk`
+
+The `Events` section names per-node reasons:
+
+```
+Warning  FailedScheduling  0/3 nodes are available: 1 Insufficient cpu,
+  1 Insufficient memory, 1 node(s) had untolerated taint
+  {dedicated=batch:NoSchedule}.
+```
+
+Each node's reason is listed separately — the pod must satisfy ALL constraints on ONE node.
+
+### Step 2 — Check what the pod requests
+
+<Safety level="readonly" /> `kubectl get pod -n example-ns report-worker-9f6d2-px7qk -o jsonpath='{.spec.containers[*].resources}{"\n"}{.spec.nodeSelector}{"\n"}{.spec.tolerations}'`
+
+Compare against node capacity:
+
+<Safety level="readonly" /> `kubectl describe node node-2 | grep -A6 "Allocated resources"`
+
+### Step 3 — If volumes are involved, check the PVC
+
+<Safety level="readonly" /> `kubectl get pvc -n example-ns`
+
+A `Pending` PVC blocks scheduling — see the [PVC Pending guide](/kubernetes/pvc-pending).
+
+### Step 4 — Check quota
+
+<Safety level="readonly" /> `kubectl describe resourcequota -n example-ns`
+
+## Root cause analysis
+
+| Event text | Root cause |
+|---|---|
+| `Insufficient cpu` / `Insufficient memory` | Requests exceed free capacity |
+| `untolerated taint` | Taints without matching tolerations |
+| `didn't match Pod's node affinity/selector` | Selector names a label no node has |
+| `unbound immediate PersistentVolumeClaims` | PVC stuck Pending |
+| `exceeded quota` at admission | ResourceQuota full |
+
+## Resolution
+
+- **Insufficient resources:** right-size requests down — `kubectl top pod` on siblings shows actual usage, often 3–5× below inflated requests. Or add capacity.
+- **Taints:** add a toleration *only* if the workload belongs there. Never tolerate control-plane taints to fix scheduling — that's masking a capacity problem.
+- **Selector:** fix the selector to a real label, or label a node. <Safety level="modifying" /> `kubectl label node node-2 pool=batch`
+- **PVC:** fix the claim's StorageClass/availability per the PVC guide.
+- **Quota:** raise it or delete idle workloads — confirm with the namespace owner first.
+
+## Verification
+
+<Safety level="readonly" /> `kubectl get pod -n example-ns report-worker-9f6d2-px7qk -o wide` — `STATUS: Running`, `NODE` assigned.
+
+```
+Normal  Scheduled  Successfully assigned example-ns/report-worker-9f6d2-px7qk to node-2
+```
+
+## Prevention
+
+- Size requests from measured usage — oversized requests are the #1 Pending cause.
+- Cluster autoscaler + PodDisruptionBudgets so capacity follows demand.
+- Fail fast in CI: a rollout producing Pending pods should alert immediately.
+- Practice this diagnosis in the [Pod Pending simulator](/simulator/pod-pending).
+
+## Kubernetes version notes
+
+Applies to Kubernetes 1.28–1.34. `FailedScheduling` message text varies slightly by minor version — match on keywords, not exact strings.
+
+## Related
+
+- [PVC Pending](/kubernetes/pvc-pending) — when the blocker is a volume
+- [Node NotReady](/kubernetes/node-not-ready) — nodes that can't host pods
+- [Manifest Validator](/tools/manifest-validator) — catch missing resources fields before apply

@@ -1,0 +1,93 @@
+## Symptoms
+
+- External requests to an ingress host return `502 Bad Gateway` (or `503` on some controllers).
+- Pods are `Running` and `Ready` — the app looks healthy from inside.
+- The ingress controller itself responds (it produced the 502), so it's alive.
+
+A 502 means the ingress reached the upstream and got a bad response — usually connection refused on the target port, or an endpoint pointing nowhere.
+
+## Common causes
+
+1. **Service targetPort ≠ container port** — endpoints exist but forward to a port nothing listens on. Most common after config drift.
+2. **Service has no endpoints** — selector matches zero pods (label drift) or all pods unready.
+3. **Ingress rule points at the wrong Service/port** — renamed Service, wrong `service.port.number`.
+4. **App listens on a different port than expected** — e.g. code change moved :8080 → :3000.
+5. **Backend timeout/TLS mismatch** — upstream slow beyond proxy timeout, or HTTPS backend with HTTP expectation.
+
+## Diagnosis
+
+### Step 1 — Confirm pods are healthy
+
+<Safety level="readonly" /> `kubectl get pods -n example-ns -o wide -l app=api`
+
+Running 1/1 with no restarts → the break is between ingress and container.
+
+### Step 2 — Check the ingress rule
+
+<Safety level="readonly" /> `kubectl describe ingress -n example-ns api-ingress`
+
+```
+Rules:
+  api.example.com  / → Service: api  port: 8080
+```
+
+### Step 3 — Check the Service's port mapping and endpoints
+
+<Safety level="readonly" /> `kubectl get svc -n example-ns api`
+
+```
+NAME   TYPE       CLUSTER-IP    PORT(S)    TARGETPORT
+api    ClusterIP  10.96.8.44    80/TCP     8080/TCP
+```
+
+<Safety level="readonly" /> `kubectl get endpoints -n example-ns api`
+
+Endpoints exist → pods are selected. But `targetPort: 8080`…
+
+### Step 4 — Check what the container actually listens on
+
+<Safety level="readonly" /> `kubectl logs -n example-ns api-7d5c9-a1 | head -3`
+
+```
+api 3.2.0 listening on :3000
+```
+
+The app listens on **3000**, the Service targets **8080** — kube-proxy forwards to a dead port → connection refused → ingress 502.
+
+## Root cause analysis
+
+| Evidence | Root cause |
+|---|---|
+| Endpoints exist, targetPort ≠ containerPort | Port mapping mismatch |
+| Endpoints `<none>` | Selector matches no pods / pods unready |
+| Ingress references missing Service | Rule points at wrong Service |
+| App log shows different port than Service | Code/config port drift |
+
+## Resolution
+
+- **Port mismatch:** align `service.spec.ports[].targetPort` with the container's real port. <Safety level="modifying" />
+- **No endpoints:** fix the Service selector or the pod readiness — see [Pod Pending](/kubernetes/pod-pending) / [CrashLoopBackOff](/kubernetes/crashloopbackoff).
+- **Wrong rule:** update the ingress backend to the correct `service.name`/`port.number`. <Safety level="modifying" />
+- **App port moved:** make the port a single source of truth — container `containerPort`, Service `targetPort`, and probe ports should match.
+
+## Verification
+
+<Safety level="readonly" /> `kubectl get endpoints -n example-ns api` — shows `:3000` after the fix.
+
+Then the real check — an external request through the ingress returns 200, not 502.
+
+## Prevention
+
+- Contract-test Service ↔ container port alignment in CI.
+- Alert on HTTP 5xx rate at the ingress — catches this in minutes.
+- Try the [Ingress 502 simulator](/simulator/ingress-502) to practice the trace.
+
+## Kubernetes version notes
+
+Applies to Kubernetes 1.28–1.34 and networking.k8s.io/v1 Ingress. Controller-specific: nginx produces `502`, Traefik may show `503` — semantics identical.
+
+## Related
+
+- [DNS Resolution](/kubernetes/dns-resolution) — the other "service unreachable" pattern
+- [Probe Generator](/tools/probe-generator) — correct readiness gates keep dead pods out of endpoints
+- [kubectl Builder](/tools/kubectl-builder)

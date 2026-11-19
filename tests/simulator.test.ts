@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { execute, parseCommand, tokenize } from "@/lib/simulator";
-import { simScenarios } from "@/data/simulator";
+import { allSimScenarios } from "@/data/simulator";
 
-const cluster = simScenarios[0].cluster; // crashloopbackoff
+const cluster = allSimScenarios[0].cluster; // crashloopbackoff
 
 function run(raw: string, c = cluster) {
   return execute(parseCommand(raw), c);
@@ -157,8 +157,12 @@ describe("execute", () => {
 });
 
 describe("scenario data integrity", () => {
+  it("has 10 scenarios", () => {
+    expect(allSimScenarios).toHaveLength(10);
+  });
+
   it("every scenario has 1+ correct diagnosis and ≥3 hints", () => {
-    for (const s of simScenarios) {
+    for (const s of allSimScenarios) {
       expect(s.diagnosis.filter((d) => d.correct).length).toBeGreaterThanOrEqual(1);
       expect(s.hints.length).toBeGreaterThanOrEqual(3);
       expect(s.cluster.pods.length + s.cluster.nodes.length).toBeGreaterThan(0);
@@ -166,7 +170,7 @@ describe("scenario data integrity", () => {
   });
 
   it("every scenario slugs are unique", () => {
-    const slugs = simScenarios.map((s) => s.slug);
+    const slugs = allSimScenarios.map((s) => s.slug);
     expect(new Set(slugs).size).toBe(slugs.length);
   });
 });

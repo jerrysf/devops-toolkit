@@ -101,7 +101,16 @@ export default function ProductPage() {
               <ShieldCheck className="size-3.5" /> 14-day refund policy
             </li>
             <li className="flex items-center gap-2">
-              <FileText className="size-3.5" /> PDF + Markdown + YAML files
+              <FileText className="size-3.5" /> Markdown + YAML + printable handbook
+            </li>
+            <li>
+              <a
+                href="/downloads/sample-runbook-crashloopbackoff.md"
+                download
+                className="flex items-center gap-2 text-primary hover:underline"
+              >
+                <Download className="size-3.5" /> Free sample — a complete runbook
+              </a>
             </li>
           </ul>
         </div>
@@ -139,8 +148,8 @@ export default function ProductPage() {
             },
             {
               icon: Download,
-              title: "PDF handbook",
-              text: "Everything bundled into a printable PDF for offline reading and on-call binders.",
+              title: "Printable handbook",
+              text: "Everything compiled into one print-ready HTML document — print to PDF for on-call binders.",
             },
             {
               icon: ShieldCheck,
