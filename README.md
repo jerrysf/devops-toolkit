@@ -1,36 +1,49 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# DevOps Toolkit
 
-## Getting Started
+Practical troubleshooting workflows, production-ready runbooks, and
+browser-native developer tools for DevOps and SRE engineers — built with
+Next.js, TypeScript, Tailwind CSS, and MDX.
 
-First, run the development server:
+- **Free Kubernetes troubleshooting guides** (`/kubernetes`) — verified
+  commands, expected output, safety annotations
+- **Free tools** (`/tools`) — YAML Validator, Cron Expression Generator,
+  all client-side
+- **Paid product** (`/products/kubernetes-toolkit`) — the Kubernetes
+  Troubleshooting Toolkit, sold via a hosted checkout provider
+
+## Quick start
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
+pnpm dev          # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+```bash
+pnpm test         # unit tests (cron parser, YAML validator)
+pnpm typecheck    # TypeScript
+pnpm lint         # ESLint
+pnpm build        # production build (fully static)
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Structure
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+content/kubernetes/   # MDX troubleshooting guides & reference pages
+src/app/              # App Router routes
+src/components/       # UI (site chrome, tools, MDX primitives)
+src/components/ui/    # shadcn/ui primitives
+src/data/             # Typed content registries (articles, tools, product)
+src/lib/              # cron engine, yaml validation, payments, analytics
+products/             # Source assets for the paid download
+docs/                 # PAYMENTS.md, SEARCH-CONSOLE.md
+tests/                # Vitest unit tests
+```
 
-## Learn More
+See `DEVELOPMENT.md` for the content-authoring workflow and
+`DEPLOYMENT.md` for going live.
 
-To learn more about Next.js, take a look at the following resources:
+## Status
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Site, guides, tools: complete and verified (build + tests green)
+- Payments: **prepared, not connected** — see `docs/PAYMENTS.md`
+- Analytics: wired but inert until `NEXT_PUBLIC_GA_ID` is set

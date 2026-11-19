@@ -1,0 +1,117 @@
+The commands that matter during an incident, organized by what you're trying to learn — not alphabetically. Substitute your own namespace and resource names.
+
+<Callout type="info" title="RBAC">
+Every command on this page is read-only (`get`, `describe`, `logs`, `top`). They require a read role such as `view` in the target namespace, plus `get nodes`/`list nodes` for the cluster-scoped sections.
+</Callout>
+
+## Cluster and nodes
+
+```bash
+kubectl get nodes -o wide              # node status, internal IPs, OS, runtime
+kubectl describe node <node>           # conditions, capacity, taints, events
+kubectl top nodes                      # CPU/memory per node (needs metrics-server)
+kubectl cluster-info                   # API server + CoreDNS endpoints
+kubectl version                        # client and server versions
+kubectl api-resources                  # everything the API server serves
+kubectl api-versions                   # enabled API groups/versions
+```
+
+## Pods — finding the problem
+
+```bash
+kubectl get pods -n <ns> -o wide       # status, restarts, node, IP
+kubectl get pods -A | grep -v Running  # everything not Running, all namespaces
+kubectl get pods -n <ns> -w            # watch status changes live
+kubectl get pod <pod> -n <ns> -o yaml  # full spec + status (conditions, lastState)
+kubectl describe pod <pod> -n <ns>     # events are the fastest first signal
+kubectl top pod -n <ns>                # live CPU/memory per pod
+```
+
+## Pods — reading logs
+
+```bash
+kubectl logs <pod> -n <ns>                     # current container logs
+kubectl logs <pod> -n <ns> --previous          # logs of the LAST crashed container — key for CrashLoopBackOff
+kubectl logs <pod> -n <ns> -c <container>      # one container in a multi-container pod
+kubectl logs <pod> -n <ns> --tail=100          # last 100 lines only
+kubectl logs <pod> -n <ns> --since=30m         # time-bounded logs
+kubectl logs -f <pod> -n <ns>                  # stream (Ctrl+C to stop)
+kubectl logs deploy/<name> -n <ns>             # aggregate logs across a deployment's pods
+```
+
+## Events — the incident timeline
+
+```bash
+kubectl get events -n <ns> --sort-by=.lastTimestamp     # newest last
+kubectl get events -n <ns> --field-selector type=Warning # warnings only
+kubectl get events -n <ns> --field-selector involvedObject.name=<pod>
+```
+
+## Deployments and rollouts
+
+```bash
+kubectl get deployments -n <ns>
+kubectl rollout status deploy/<name> -n <ns>     # is a rollout progressing?
+kubectl rollout history deploy/<name> -n <ns>    # revision list
+kubectl get rs -n <ns>                           # which ReplicaSet owns the pod
+kubectl describe deploy <name> -n <ns>           # strategy, conditions, events
+```
+
+## Services and networking
+
+```bash
+kubectl get svc -n <ns>                          # Service type, ClusterIP, ports
+kubectl get endpoints <svc> -n <ns>              # EMPTY endpoints = no ready pods behind it
+kubectl describe svc <svc> -n <ns>               # selector vs pod labels check
+kubectl get ingress -n <ns>                      # hosts, address, ports
+kubectl describe ingress <name> -n <ns>          # rules + controller events
+kubectl get networkpolicies -n <ns>              # policies that might block traffic
+```
+
+A quick in-cluster DNS/connectivity probe:
+
+```bash
+kubectl run tmp-dns --rm -it --image=busybox:1.36 --restart=Never -- nslookup <svc>.<ns>.svc.cluster.local
+kubectl run tmp-curl --rm -it --image=curlimages/curl:8.10.1 --restart=Never -- curl -sv http://<svc>.<ns>.svc.cluster.local:<port>
+```
+
+(These create a temporary pod — technically mutating, but self-cleaning and standard practice for debugging.)
+
+## Config and storage
+
+```bash
+kubectl get configmaps -n <ns>
+kubectl get secrets -n <ns>                      # names only — you rarely need values
+kubectl get pvc -n <ns>                          # claim status: Bound/Pending
+kubectl describe pvc <name> -n <ns>              # why a claim is Pending
+kubectl get storageclass                         # provisioners available
+kubectl get pv | grep -i failed                  # broken volumes
+```
+
+## Auth and RBAC
+
+```bash
+kubectl auth can-i get pods -n <ns>                    # "yes"/"no" — check before assuming
+kubectl auth can-i --list -n <ns>                      # everything you can do in a namespace
+kubectl auth can-i delete deployments -n <ns> --as=system:serviceaccount:<ns>:<sa>
+kubectl config current-context                          # which cluster you're about to touch
+kubectl config get-contexts
+```
+
+<Callout type="warning" title="Know your context">
+Most production incidents caused by kubectl are running the right command on the wrong cluster. `kubectl config current-context` before anything mutating — always.
+</Callout>
+
+## The 60-second triage sequence
+
+When something's wrong and you don't know what yet:
+
+```bash
+kubectl get nodes                                          # 1. is a node down?
+kubectl get pods -A | grep -vE "Running|Completed"        # 2. what's unhealthy?
+kubectl get events -A --sort-by=.lastTimestamp | tail -20 # 3. what just happened?
+kubectl describe pod <suspect> -n <ns>                    # 4. read its events
+kubectl logs <suspect> -n <ns> --previous                 # 5. read its last words
+```
+
+Five commands, read-only, under a minute — and they localize most Kubernetes failures to a node, a workload, or the control plane.

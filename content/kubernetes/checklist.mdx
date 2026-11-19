@@ -1,0 +1,50 @@
+A printable sequence for the first 30 minutes of a Kubernetes incident. Designed to be followed under pressure — check items off literally.
+
+## Phase 1 — Orient (first 5 minutes)
+
+- [ ] Confirm which cluster and namespace is affected. `kubectl config current-context` — verify you're pointed where you think you are.
+- [ ] Write down the exact symptom: error message, status, when it started, what changed.
+- [ ] Check for a recent deploy or config change. Most incidents are delta-shaped: `kubectl rollout history deploy/<name> -n <ns>` and your CI history.
+- [ ] Note the blast radius: one pod? one service? one node? the whole namespace?
+
+## Phase 2 — Localize (5–10 minutes)
+
+- [ ] `kubectl get nodes` — any `NotReady`?
+- [ ] `kubectl get pods -A | grep -vE "Running|Completed"` — what's unhealthy and where does it cluster?
+- [ ] `kubectl get events -n <ns> --sort-by=.lastTimestamp | tail -20` — what do the last events say?
+- [ ] `kubectl describe pod <pod> -n <ns>` — read the Events section before the spec.
+- [ ] `kubectl logs <pod> -n <ns> --previous` — if it's restarting, read the *previous* container's logs.
+- [ ] `kubectl get endpoints <svc> -n <ns>` — if it's a connectivity issue, does the Service have endpoints?
+
+Stop when you can name the failing layer: node, scheduler, image pull, container runtime, application, or network.
+
+## Phase 3 — Decide (before touching anything)
+
+- [ ] Can you state the suspected root cause in one sentence? If not, keep diagnosing.
+- [ ] Is the safe fix a config change, a rollout, a scale-up, or a node operation?
+- [ ] **Do you need to drain, delete, or force anything?** If yes: check replica spread and PodDisruptionBudgets first, and tell the team what you're about to do.
+- [ ] Is there a mitigation that's faster than the fix? (Rollback, scale up replicas, fail over traffic.)
+
+## Phase 4 — Act (one change at a time)
+
+- [ ] Apply **one** change. Verify. Then the next. Batched changes make post-incident review impossible.
+- [ ] Prefer `rollout undo`/`rollout restart`/`apply` over `delete pod` — controller-managed recovery is auditable.
+- [ ] If you must delete or drain: confirm the command's namespace and resource name twice, then run it.
+- [ ] Record every command you ran — you'll need the list for the postmortem.
+
+## Phase 5 — Verify and close
+
+- [ ] `kubectl get pods -n <ns> -w` — stable `Ready` state, restart counts not climbing.
+- [ ] `kubectl rollout status deploy/<name> -n <ns>` — clean rollout.
+- [ ] Verify from the user's side: curl the endpoint, check the dashboard, confirm alerts cleared.
+- [ ] Confirm nothing else broke: `kubectl get events -n <ns> --field-selector type=Warning | tail`.
+- [ ] Write down root cause + fix + how it was found, while it's fresh.
+- [ ] File the follow-ups: alerts that didn't fire, runbook gaps, the config that allowed this.
+
+## What not to do
+
+- Don't start by deleting pods — it restarts the symptom.
+- Don't run mutating commands without confirming `kubectl config current-context`.
+- Don't read Secret values to debug — `describe pod` and events surface missing keys without exposing credentials.
+- Don't skip verification because the dashboards "look fine" — check the actual endpoint.
+- Don't fix and forget — an incident without a prevention item will repeat.

@@ -1,0 +1,143 @@
+## Symptoms
+
+- `kubectl get nodes` shows a node in `NotReady` status.
+- Pods on that node show `Terminating`, `Unknown`, or get rescheduled to other nodes.
+- `kubectl describe node` reports `KubeletNotReady` or a `NetworkUnavailable` condition.
+- New pods may stay `Pending` if remaining nodes lack capacity.
+
+```bash
+$ kubectl get nodes
+NAME      STATUS     ROLES    AGE   VERSION
+node-1    Ready      worker   90d   v1.31.4
+node-2    Ready      worker   90d   v1.31.4
+node-3    NotReady   worker   88d   v1.31.4
+```
+
+`NotReady` means the control plane hasn't heard from the node's kubelet within the node-monitor grace period (~40 seconds by default). The node may be down, network-partitioned, resource-starved, or its kubelet may have crashed.
+
+## Common causes
+
+1. **Kubelet stopped or crashed** — the single most common cause; check `systemctl status kubelet` on the node.
+2. **Resource pressure** — `MemoryPressure`, `DiskPressure`, or `PIDPressure` node conditions; often a pod consuming the node's disk or memory.
+3. **Network partition** — the node can't reach the API server (`NetworkUnavailable`), security group/route changes, or a dead NIC.
+4. **Expired or invalid kubelet certificate** — TLS bootstrap or rotation failure; kubelet logs show `certificate has expired`.
+5. **Node actually down** — VM stopped, hardware failure, or cloud provider maintenance event.
+6. **CNI/container runtime failure** — containerd or the CNI plugin crashed; kubelet reports runtime not ready.
+7. **Cloud controller / metadata issues** — managed clusters: node object exists but the underlying instance was terminated or replaced.
+
+## Diagnosis
+
+### Step 1 — Read the node's conditions
+
+<Safety level="readonly" /> `kubectl describe node node-3`
+
+The `Conditions` table is the fastest signal:
+
+```
+Conditions:
+  Type             Status    Reason                   Message
+  ----             ------    ------                   -------
+  MemoryPressure   False     KubeletHasSufficientMemory
+  DiskPressure     True      KubeletHasDiskPressure   node has disk pressure: image fs usage 92%
+  PIDPressure      False     KubeletHasSufficientPID
+  Ready            False     KubeletNotReady          container runtime network not ready: NetworkReady=false
+```
+
+Read `True` pressure conditions as "the kubelet is alive but unhealthy" — it will evict pods to protect the node. `Ready=False` with `KubeletNotReady` means heartbeats stopped entirely.
+
+Also check `Events` at the bottom — `NodeNotReady`, `EvictionThresholdMet`, `NodeHasDiskPressure` tell you when the slide started.
+
+<Safety level="readonly" /> `kubectl get node node-3 -o yaml | yq '.status.conditions'`
+
+### Step 2 — Check what's still running on the node
+
+<Safety level="readonly" /> `kubectl get pods -A -o wide --field-selector spec.nodeName=node-3`
+
+This shows which workloads are affected and whether they're being rescheduled. Note that `kubectl` talking to the API server works even when the node is unreachable — you're reading the last reported state, not live data from the node.
+
+### Step 3 — Inspect the node itself
+
+This requires SSH or your cloud console — it's outside Kubernetes RBAC. On the node:
+
+```bash
+sudo systemctl status kubelet
+sudo journalctl -u kubelet -n 200 --no-pager
+sudo journalctl -u containerd -n 100 --no-pager
+df -h / /var/lib/containerd     # disk pressure?
+free -m                          # memory pressure?
+systemctl status containerd
+```
+
+Look for: kubelet `failed`/`inactive`, `certificate` errors, `disk pressure` messages, containerd crash loops, or OOM kills of kubelet itself (`dmesg | grep -i oom`).
+
+### Step 4 — Check cloud-level state
+
+For managed clusters (EKS/GKE/AKS), confirm the instance actually exists and is running via the cloud console or CLI — an instance terminated by an autoscaler or spot reclamation leaves a ghost `NotReady` node object.
+
+<Callout type="warning" title="RBAC note">
+`kubectl describe node` and `get nodes` need cluster-scoped `get`/`list` on `nodes` — a cluster-reader role suffices. Node-level SSH access is a separate, sensitive privilege; restrict it and prefer short-lived access (e.g. SSM Session Manager, `gcloud compute ssh` with IAP) over standing keys.
+</Callout>
+
+## Root cause analysis
+
+- **`KubeletNotReady` + kubelet service down** → restart the kubelet; read `journalctl -u kubelet` for the crash reason before restarting so you fix the cause, not the symptom.
+- **`DiskPressure=True`** → the node disk is nearly full: oversized container logs, image garbage, or a pod writing unbounded data to `emptyDir` or hostPath. Kubelet garbage-collects images automatically but logs and pod volumes are on you.
+- **`MemoryPressure=True`** → a pod exceeded its share; check which pod's usage spiked (`kubectl top pod -A --sort-by=memory`, needs metrics-server).
+- **`NetworkReady=false` / runtime network not ready** → CNI plugin down or misconfigured — check the CNI DaemonSet pods on that node and `containerd` status.
+- **Certificate errors in kubelet logs** → expired certs; on kubeadm clusters check `kubeadm certs check-expiration`; on managed clusters this is usually handled for you — investigate node bootstrap logs.
+- **Node object exists but VM is gone** → delete the stale node object and let the node provisioner/autoscaler replace it.
+
+## Resolution
+
+**Kubelet crashed:**
+
+```bash
+sudo systemctl restart kubelet
+sudo systemctl status kubelet   # confirm active
+```
+
+Then watch `kubectl get nodes -w` — the node should return to `Ready` within a minute. If it flaps, the journal has the reason.
+
+**Disk pressure:**
+
+```bash
+# See what's consuming space (adjust paths to your runtime):
+sudo du -xh /var/lib/containerd /var/log /var/lib/kubelet 2>/dev/null | sort -h | tail -20
+# Rotate/truncate oversized container logs if needed; then let kubelet re-evaluate.
+```
+
+**Node is healthy but unreachable:** fix the network path (security groups, routes, NACLs, firewall). The node will re-register itself when the API server becomes reachable — no kubectl action needed.
+
+**Node is genuinely dead or needs replacement** — drain it first:
+
+<Safety level="destructive" /> `kubectl drain node-3 --ignore-daemonsets --delete-emptydir-data`
+
+<Callout type="danger" title="Read before draining">
+`drain` evicts every non-DaemonSet pod on the node. Check you have replicas elsewhere first (`kubectl get deployment <name> -o wide` → replicas spread across nodes) and respect `PodDisruptionBudget`s — drain honors them and will *wait* if evicting would violate a PDB. `--delete-emptydir-data` deletes pod data stored in `emptyDir` volumes permanently — only use it when the data is disposable.
+</Callout>
+
+After the node is repaired or replaced:
+
+<Safety level="modify" /> `kubectl uncordon node-3`
+
+**Stale node object (instance terminated, object remains):**
+
+<Safety level="modify" /> `kubectl delete node node-3`
+
+This only removes the Kubernetes node *object* — it does not touch any VM. The cluster autoscaler or node provisioner will add a replacement if capacity is needed.
+
+## Verify the fix
+
+<Safety level="readonly" /> `kubectl get nodes` — the node shows `Ready`.
+
+<Safety level="readonly" /> `kubectl describe node node-3` — all pressure conditions `False`, `Ready=True`, `KubeletReady` reason.
+
+<Safety level="readonly" /> `kubectl get pods -A -o wide --field-selector spec.nodeName=node-3` — pods scheduled back and reaching `Running`.
+
+## Prevention
+
+- **Alert on node condition changes**: `kube_node_status_condition{condition="Ready",status="false"}` in Prometheus, plus `DiskPressure`/`MemoryPressure` alerts before they evict pods.
+- **Set resource requests/limits on every workload** — unbounded pods are the top cause of node memory pressure.
+- **Configure log rotation** for container logs (`containerLogMaxSize`/`containerLogMaxFiles` kubelet flags) and ship logs off-node.
+- **Use PodDisruptionBudgets** for critical services so drains and voluntary disruptions can't take your whole deployment down.
+- **Test node replacement regularly** — a quarterly drain-and-replace exercise turns a scary operation into a routine one.

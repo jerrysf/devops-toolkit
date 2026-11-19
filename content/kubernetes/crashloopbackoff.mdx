@@ -1,0 +1,180 @@
+## Symptoms
+
+- `kubectl get pods` shows a pod in `CrashLoopBackOff` status with a growing `RESTARTS` count.
+- The pod alternates between `Running` (briefly), `Error`, and `CrashLoopBackOff`.
+- The application is unreachable or flapping, and readiness/liveness probes may be firing.
+
+```bash
+$ kubectl get pods -n example-ns
+NAME                        READY   STATUS             RESTARTS        AGE
+web-6c8f9bb-2xklp          0/1     CrashLoopBackOff   7 (3m12s ago)   21m
+```
+
+`CrashLoopBackOff` is not an error itself — it is the state Kubernetes enters while backing off between container restarts. The real error is whatever makes the container exit.
+
+## Common causes
+
+Ordered roughly by how often each is the culprit in practice:
+
+1. **Application error** — the process crashes on startup (missing config, uncaught exception, failed dependency check).
+2. **Missing or wrong environment variables** — a required env var, ConfigMap key, or Secret reference doesn't exist or is malformed.
+3. **Failing liveness or startup probe** — the app runs but the probe fails, so kubelet keeps killing it.
+4. **Container exits successfully** — the command completes and exits `0`, but the pod's `restartPolicy` is `Always` (the default for Deployments), so Kubernetes restarts it forever.
+5. **OOMKilled** — the container exceeds its memory limit and is killed with exit code 137. See the dedicated OOMKilled guide (in progress).
+6. **Bad image entrypoint/command** — a typo in `command`/`args`, or an entrypoint that doesn't exist in the image.
+7. **Filesystem or permission errors** — the app can't write to a volume, or runs as a user without permission to read its config.
+8. **Missing or invalid imagePull secrets** show up as ImagePullBackOff instead — different guide, different fix.
+
+## Diagnosis
+
+Work through these in order. Commands marked read-only only query the API server and are always safe to run.
+
+### Step 1 — Get the current state and restart count
+
+<Safety level="readonly" /> `kubectl get pods -n example-ns -o wide`
+
+Tells you which pod is failing, on which node, and how many times it has restarted.
+
+### Step 2 — Read the pod's events
+
+<Safety level="readonly" /> `kubectl describe pod -n example-ns web-6c8f9bb-2xklp`
+
+Scroll to the `Events` section at the bottom. Typical output:
+
+```
+Events:
+  Type     Reason     Age                From               Message
+  ----     ------     ----               ----               -------
+  Normal   Scheduled  22m                default-scheduler  Successfully assigned example-ns/web-6c8f9bb-2xklp to node-3
+  Normal   Pulled     21m                kubelet            Successfully pulled image "registry.example.com/web:1.4.2" in 1.2s
+  Normal   Created    21m (x7 over 21m)  kubelet            Created container web
+  Normal   Started    21m (x7 over 21m)  kubelet            Started container web
+  Normal   Pulled     21m (x4 over 21m)  kubelet            Container image "registry.example.com/web:1.4.2" already present on machine
+  Warning  BackOff    3m (x60 over 21m)  kubelet            Back-off restarting failed container web
+```
+
+`Back-off restarting failed container` confirms the container starts then exits — the problem is inside the container, not the scheduler.
+
+### Step 3 — Read the logs of the previous crash
+
+<Safety level="readonly" /> `kubectl logs -n example-ns web-6c8f9bb-2xklp --previous`
+
+`--previous` shows logs from the *last* terminated container — usually where the actual error lives. Without it you may read the logs of a fresh container that hasn't crashed yet.
+
+```
+$ kubectl logs web-6c8f9bb-2xklp --previous
+2026-11-19T09:14:02Z INFO  starting web server
+2026-11-19T09:14:02Z FATAL missing required env var DATABASE_URL
+```
+
+That one line is the root cause: the container exits because `DATABASE_URL` isn't set.
+
+For multi-container pods, name the container explicitly:
+
+<Safety level="readonly" /> `kubectl logs -n example-ns web-6c8f9bb-2xklp -c web --previous`
+
+### Step 4 — Check the exit code and last state
+
+<Safety level="readonly" /> `kubectl get pod -n example-ns web-6c8f9bb-2xklp -o jsonpath='{.status.containerStatuses[*].lastState}'`
+
+```json
+{"terminated":{"exitCode":1,"reason":"Error","startedAt":"...","finishedAt":"..."}}
+```
+
+Exit codes narrow the cause quickly:
+
+| Exit code | Meaning | Likely cause |
+|-----------|---------|--------------|
+| 0 | Clean exit | Job-like process completing; wrong `restartPolicy` or a command that should be a long-running server but isn't |
+| 1 | Application error | Most common — read `--previous` logs |
+| 126 | Command not executable | Bad `command`/`args`, missing shebang, wrong file permissions |
+| 127 | Command not found | Entrypoint binary or script doesn't exist in the image |
+| 137 | SIGKILL (128+9) | OOMKilled, or probe forced a kill — check memory limits |
+| 139 | SIGSEGV (128+11) | Segmentation fault — application bug or arch mismatch (e.g. amd64 image on arm64 node) |
+| 143 | SIGTERM (128+15) | Graceful kill — often a failing liveness probe or pod eviction |
+
+### Step 5 — Inspect probes and config
+
+<Safety level="readonly" /> `kubectl get pod -n example-ns web-6c8f9bb-2xklp -o yaml | yq '.spec.containers[0] | {livenessProbe, readinessProbe, startupProbe, env, resources}'`
+
+Check whether a `livenessProbe` fires before the app is ready (slow-starting apps need a `startupProbe` instead), and whether every `env` entry and `valueFrom` reference points at a ConfigMap/Secret key that actually exists:
+
+<Safety level="readonly" /> `kubectl get configmap,secret -n example-ns`
+
+<Callout type="warning" title="RBAC note">
+Reading Secrets' *names* only needs `list secrets`, but inspecting their values needs `get secret` — often restricted. You usually don't need secret values to diagnose; the pod spec's `secretKeyRef` tells you which keys are expected, and `kubectl describe pod` reports "secret not found" or "key not found" events without exposing any value.
+</Callout>
+
+## Root cause analysis
+
+Match what you found to the fix:
+
+- **Logs show an application error** → fix the app or its config, not Kubernetes.
+- **`exitCode: 0` with frequent restarts** → the container completes and exits; a Deployment keeps restarting it. Either make the process long-running, or run it as a Job.
+- **`reason: "OOMKilled"` or exit 137** → memory limit too low or a leak; see the OOMKilled guide.
+- **Logs look healthy but restarts continue** → suspect the liveness probe. Temporarily check probe config against the app's actual startup time and health endpoint.
+- **`exitCode: 127`** → verify the image's entrypoint: run the image locally with `docker run --rm registry.example.com/web:1.4.2` (or check `command`/`args` against the image's `Dockerfile`).
+- **Events mention `configmap`/`secret` not found** → create or correct the referenced object, fix the key name.
+
+## Resolution
+
+Example for the missing `DATABASE_URL` above — reference it from a Secret:
+
+```yaml
+spec:
+  containers:
+    - name: web
+      image: registry.example.com/web:1.4.2
+      env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: web-db-credentials
+              key: url
+```
+
+<Safety level="modify" /> `kubectl apply -f web-deployment.yaml -n example-ns`
+
+<Safety level="modify" /> `kubectl rollout restart deployment/web -n example-ns`
+
+`rollout restart` recreates pods through the Deployment controller — the safe way to pick up new config. It does not delete the Deployment or the Service.
+
+<Callout type="danger" title="Avoid as a first response">
+`kubectl delete pod` will restart the pod, but it only masks the problem — the new pod will crash for the same reason. Use it only after fixing the underlying config. Never start an incident response by deleting workloads, especially in production namespaces.
+</Callout>
+
+For a failing liveness probe on a slow-starting app, replace it with a `startupProbe`:
+
+```yaml
+startupProbe:
+  httpGet:
+    path: /healthz
+    port: 8080
+  failureThreshold: 30
+  periodSeconds: 10   # gives the app up to 5 minutes to boot
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: 8080
+  periodSeconds: 10
+```
+
+## Verify the fix
+
+<Safety level="readonly" /> `kubectl get pods -n example-ns -w`
+
+Watch the new pod reach `Running` with `READY 1/1` and a `RESTARTS` count that stays at 0 for several minutes. Then confirm the rollout is clean:
+
+<Safety level="readonly" /> `kubectl rollout status deployment/web -n example-ns`
+
+```
+deployment "web" successfully rolled out
+```
+
+## Prevention
+
+- **Set a `startupProbe`** on any app whose cold start exceeds ~30 seconds, so liveness doesn't kill it mid-boot.
+- **Fail fast in the app**: surface missing config as a clear fatal log (like the `DATABASE_URL` example) instead of a stack trace — it turns a 20-minute diagnosis into a 2-minute one.
+- **Resource requests and limits** that reflect reality; sudden OOMKills after a deploy usually mean a new memory ceiling or a leak.
+- **Keep `imagePullPolicy` and tags pinned** — `latest` makes restarts pull unpredictable code.
+- **Alert on restart rate**, not just pod status: `increase(kube_pod_container_status_restarts_total[15m]) > 0` in Prometheus catches crash loops before users do.

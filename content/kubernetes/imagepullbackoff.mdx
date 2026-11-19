@@ -1,0 +1,168 @@
+## Symptoms
+
+- `kubectl get pods` shows `ImagePullBackOff` or `ErrImagePull` status.
+- The pod never reaches `Running` — no container is created.
+- Events mention `Failed to pull image`, `pull access denied`, `manifest unknown`, or `toomanyrequests`.
+
+```bash
+$ kubectl get pods -n example-ns
+NAME                        READY   STATUS             RESTARTS   AGE
+web-7d9c4f5c6b-8m2jn       0/1     ImagePullBackOff   0          6m
+```
+
+`ErrImagePull` is the initial error; `ImagePullBackOff` is Kubernetes backing off and retrying with growing delays. Both mean the kubelet cannot fetch the container image.
+
+## Common causes
+
+1. **Typo or wrong tag** — the image name or tag doesn't exist (`manifest unknown`).
+2. **Private registry without credentials** — no `imagePullSecret`, or the secret is expired/wrong (`pull access denied`, `401`, `403`).
+3. **imagePullSecret in the wrong namespace** — secrets don't cross namespaces.
+4. **Registry rate limiting** — Docker Hub pull limits (`toomanyrequests`), common on shared NAT egress IPs.
+5. **Node network/DNS problems** — the node can't reach the registry (`dial tcp: lookup`, `i/o timeout`).
+6. **Wrong registry entirely** — image pushed to `registry.internal` but the pod spec says `docker.io`.
+7. **Architecture mismatch** — image exists but has no manifest for the node's architecture (less common; shows as `no matching manifest for linux/arm64`).
+
+## Diagnosis
+
+### Step 1 — Read the pod events
+
+<Safety level="readonly" /> `kubectl describe pod -n example-ns web-7d9c4f5c6b-8m2jn`
+
+The `Events` section names the exact failure. Typical outputs and what they mean:
+
+```
+Failed to pull image "registry.example.com/web:1.4.3":
+  rpc error: ... failed to resolve reference "registry.example.com/web:1.4.3":
+  registry.example.com/web:1.4.3: not found
+```
+→ The tag (or repo) doesn't exist — typo or the push went somewhere else.
+
+```
+Failed to pull image "registry.example.com/web:1.4.2":
+  pull access denied, repository does not exist or may require authorization
+```
+→ Missing or invalid registry credentials.
+
+```
+Failed to pull image "docker.io/library/nginx:latest":
+  toomanyrequests: You have reached your unauthenticated pull rate limit.
+```
+→ Docker Hub rate limit — authenticate, mirror the image, or use another registry.
+
+```
+dial tcp: lookup registry.example.com on 10.96.0.10:53: no such host
+```
+→ DNS failure on the node or cluster DNS — check CoreDNS health.
+
+### Step 2 — Verify the image reference
+
+<Safety level="readonly" /> `kubectl get pod -n example-ns web-7d9c4f5c6b-8m2jn -o jsonpath='{.spec.containers[*].image}'`
+
+Copy the exact string and confirm it exists. From a machine with registry access:
+
+```bash
+docker pull registry.example.com/web:1.4.2
+# or, without pulling the layers:
+docker manifest inspect registry.example.com/web:1.4.2
+crane manifest registry.example.com/web:1.4.2
+```
+
+If the pull succeeds locally with the same credentials the cluster uses, the image exists and the problem is cluster-side (secrets, network).
+
+### Step 3 — Check imagePullSecrets
+
+<Safety level="readonly" /> `kubectl get pod -n example-ns web-7d9c4f5c6b-8m2jn -o jsonpath='{.spec.imagePullSecrets}'`
+
+If empty, the pod pulls anonymously — fine for public images, wrong for private registries. Check what pull secrets exist **in the pod's namespace**:
+
+<Safety level="readonly" /> `kubectl get secrets -n example-ns --field-selector type=kubernetes.io/dockerconfigjson`
+
+You never need to print the secret's value to debug this — the pod spec tells you which secret name it references; `describe pod` tells you when the referenced secret doesn't exist.
+
+Also check the ServiceAccount — pods inherit `imagePullSecrets` from it:
+
+<Safety level="readonly" /> `kubectl get serviceaccount default -n example-ns -o yaml`
+
+### Step 4 — Test from the node (when you have node access)
+
+On the node running the pod (from `kubectl get pod -o wide`), try pulling with the node's container runtime:
+
+```bash
+# containerd clusters:
+sudo crictl pull registry.example.com/web:1.4.2
+```
+
+A failure here with working credentials elsewhere points at node-level egress: proxy config on the container runtime, firewall rules, or DNS on the node itself (`/etc/resolv.conf`, not cluster DNS — image pulls happen before any pod networking exists).
+
+<Callout type="warning" title="RBAC note">
+Everything above needs only `get`/`list` on pods, secrets (names/types), and serviceaccounts in the namespace — a typical read-only role is enough. `crictl` requires shell access to the node, which is a separate privilege entirely.
+</Callout>
+
+## Root cause analysis
+
+- **`not found` / `manifest unknown`** → wrong name or tag. Fix the `image:` field or push the missing tag.
+- **`pull access denied` / `401`/`403`** → create or repair the pull secret and reference it (pod spec or ServiceAccount). For managed registries: check token expiry — ECR tokens last 12 hours; use the ECR credential helper or a CronJob that refreshes the secret.
+- **`toomanyrequests`** → authenticate pulls (authenticated Docker Hub pulls get a higher limit), mirror public images to your own registry, or pull from a registry mirror/cache.
+- **DNS/dial errors** → this is node or network infrastructure, not the pod. Check node DNS, CoreDNS, egress firewall/security groups, and HTTP proxy env vars on the container runtime.
+- **Works on some nodes, fails on others** → a node-group-specific issue: different subnets/egress rules, or only some nodes have the credential (e.g. per-node `.docker/config.json` that drifted).
+
+## Resolution
+
+**Fix a bad tag:**
+
+<Safety level="modify" /> `kubectl set image deployment/web web=registry.example.com/web:1.4.2 -n example-ns`
+
+**Create and attach a pull secret:**
+
+<Safety level="modify" /> `kubectl create secret docker-registry regcred --docker-server=registry.example.com --docker-username=ci-puller --docker-password='<token>' -n example-ns`
+
+Then reference it in the Deployment:
+
+```yaml
+spec:
+  template:
+    spec:
+      imagePullSecrets:
+        - name: regcred
+```
+
+Or attach it once to the ServiceAccount so every pod in the namespace gets it:
+
+```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: default
+  namespace: example-ns
+imagePullSecrets:
+  - name: regcred
+```
+
+<Callout type="warning" title="Credentials">
+Use a read-only, least-privilege registry account for pull secrets — pulls only need to read. Prefer short-lived tokens or your cloud provider's workload-identity integration (ECR, GAR, ACR all have node-native credential mechanisms that avoid storing passwords in Secrets at all).
+</Callout>
+
+**Route around Docker Hub rate limits:**
+
+```yaml
+# mirror to your own registry, then:
+image: registry.example.com/mirror/library/nginx:1.27
+```
+
+<Safety level="modify" /> `kubectl rollout restart deployment/web -n example-ns` — recreate pods so they pull with the fixed config. `ImagePullBackOff` resolves itself on retry too, but a rollout is deterministic.
+
+## Verify the fix
+
+<Safety level="readonly" /> `kubectl get pods -n example-ns -w`
+
+The pod should move `ImagePullBackOff` → `ContainerCreating` → `Running`. Confirm no new pull errors in events:
+
+<Safety level="readonly" /> `kubectl get events -n example-ns --field-selector reason=Failed --sort-by=.lastTimestamp`
+
+## Prevention
+
+- **Pin exact tags** — `latest` hides both "doesn't exist yet" failures and unplanned upgrades.
+- **Attach pull secrets to the ServiceAccount**, not each workload — one place to rotate.
+- **Mirror critical public images** into your own registry to eliminate rate limits and upstream outages from your availability equation.
+- **Use workload identity** for cloud registries where possible; eliminate stored registry passwords entirely.
+- **Preflight in CI**: `docker manifest inspect` (or `crane manifest`) the tag before deploy — a typo fails the pipeline in seconds instead of paging you.
