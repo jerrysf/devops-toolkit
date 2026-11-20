@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, Download, Hammer } from "lucide-react";
+import { ArrowRight, Download, Hammer, ExternalLink, Monitor } from "lucide-react";
 import { Breadcrumbs } from "@/components/breadcrumbs";
-import { resources } from "@/data/resources";
+import { resources, desktopTools } from "@/data/resources";
 import { absoluteUrl } from "@/lib/site";
 
 export const metadata: Metadata = {
@@ -79,6 +79,59 @@ export default function ResourcesPage() {
           </div>
         ))}
       </div>
+
+      {/* Desktop cluster tools */}
+      <section className="mt-16 border-t border-border/60 pt-12">
+        <div className="max-w-2xl">
+          <h2 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
+            <Monitor className="size-5 text-primary" /> Desktop cluster tools
+          </h2>
+          <p className="mt-3 text-muted-foreground">
+            Prefer a graphical interface over raw kubectl? These open-source
+            tools give you a real cluster UI — pods, logs, exec, and resource
+            editing. Links go to each project's official site; we don't host
+            or mirror binaries.
+          </p>
+        </div>
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {desktopTools.map((t) => (
+            <a
+              key={t.name}
+              href={t.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group flex flex-col rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary/50"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <h3 className="flex items-center gap-1.5 font-medium group-hover:text-primary">
+                  {t.name}
+                  <ExternalLink className="size-3.5 text-muted-foreground" />
+                </h3>
+                <span className="shrink-0 rounded-full border border-border px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
+                  {t.interface}
+                </span>
+              </div>
+              <p className="mt-2 flex-1 text-sm text-muted-foreground">
+                {t.description}
+              </p>
+              <div className="mt-4 space-y-1 text-xs text-muted-foreground">
+                <p>
+                  <span className="text-foreground/80">Best for:</span>{" "}
+                  {t.bestFor}
+                </p>
+                <p>
+                  <span className="text-foreground/80">Cost:</span> {t.cost}
+                </p>
+              </div>
+            </a>
+          ))}
+        </div>
+        <p className="mt-6 text-xs text-muted-foreground">
+          These tools connect to real clusters using your kubeconfig — keep
+          credentials local, review what each tool does with them, and prefer
+          read-only contexts for exploration.
+        </p>
+      </section>
     </div>
   );
 }
