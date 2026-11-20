@@ -10,6 +10,8 @@
  * credentials to analytics. Event params must be coarse labels only.
  */
 
+import { track } from "@vercel/analytics";
+
 export type AnalyticsEvent =
   | "tool_opened"
   | "tool_used"
@@ -24,18 +26,17 @@ export type AnalyticsEvent =
 declare global {
   interface Window {
     gtag?: (...args: unknown[]) => void;
-    va?: (event: string, name: string, params?: Record<string, unknown>) => void;
   }
 }
 
 export function trackEvent(
   event: AnalyticsEvent,
-  params?: Record<string, string | number | boolean>,
+  params?: Record<string, string | number | boolean | null>,
 ) {
   if (typeof window === "undefined") return;
   try {
     window.gtag?.("event", event, params);
-    window.va?.("event", event, params);
+    track(event, params);
   } catch {
     // Analytics is best-effort; never throw into the UI.
   }
