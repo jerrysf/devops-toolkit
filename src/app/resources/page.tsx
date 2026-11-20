@@ -119,7 +119,7 @@ export default function ResourcesPage() {
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 rounded-lg border border-primary/50 bg-primary/10 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/20"
               >
-                Download v0.1.0 (macOS) <ArrowRight className="size-4" />
+                Download v0.2.0 (macOS) <ArrowRight className="size-4" />
               </a>
               <a
                 href="https://github.com/jerrysf/k8s-desktop"
@@ -136,7 +136,7 @@ export default function ResourcesPage() {
             <li>· Pods, deployments, services, PVCs, ingresses, nodes, events</li>
             <li>· Per-container logs with --previous support</li>
             <li>· Real status detection (CrashLoopBackOff, ImagePullBackOff…)</li>
-            <li>· Read-only by design — no write path exists in the code</li>
+            <li>· Free tier is read-only; Pro adds actions + port-forward</li>
             <li>· Free download — unsigned macOS (arm64) preview build</li>
           </ul>
         </div>
