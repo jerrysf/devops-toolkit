@@ -102,7 +102,7 @@ export default function ResourcesPage() {
                   ours
                 </span>
                 <span className="rounded-full border border-amber-500/40 px-2 py-0.5 text-[11px] text-amber-300">
-                  in development
+                  early preview
                 </span>
               </h3>
               <p className="mt-2 max-w-xl text-sm text-muted-foreground">
@@ -112,14 +112,24 @@ export default function ResourcesPage() {
                 nothing can modify your cluster.
               </p>
             </div>
-            <a
-              href="https://github.com/jerrysf/k8s-desktop"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-lg border border-primary/50 bg-primary/10 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/20"
-            >
-              View source on GitHub <ArrowRight className="size-4" />
-            </a>
+            <div className="flex flex-col gap-2">
+              <a
+                href="https://github.com/jerrysf/k8s-desktop/releases"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-lg border border-primary/50 bg-primary/10 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/20"
+              >
+                Download v0.1.0 (macOS) <ArrowRight className="size-4" />
+              </a>
+              <a
+                href="https://github.com/jerrysf/k8s-desktop"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm text-muted-foreground hover:text-primary"
+              >
+                View source <ArrowRight className="size-3.5" />
+              </a>
+            </div>
           </div>
           <ul className="mt-4 grid gap-x-8 gap-y-1.5 text-sm text-muted-foreground sm:grid-cols-2">
             <li>· Context switching + namespace browsing</li>
@@ -127,7 +137,7 @@ export default function ResourcesPage() {
             <li>· Per-container logs with --previous support</li>
             <li>· Real status detection (CrashLoopBackOff, ImagePullBackOff…)</li>
             <li>· Read-only by design — no write path exists in the code</li>
-            <li>· macOS first; signed releases planned — builds from source today</li>
+            <li>· Free download — unsigned macOS (arm64) preview build</li>
           </ul>
         </div>
 
