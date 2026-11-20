@@ -112,12 +112,14 @@ export default function ResourcesPage() {
                 nothing can modify your cluster.
               </p>
             </div>
-            <Link
-              href="/contact"
+            <a
+              href="https://github.com/jerrysf/k8s-desktop"
+              target="_blank"
+              rel="noopener noreferrer"
               className="inline-flex items-center gap-2 rounded-lg border border-primary/50 bg-primary/10 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/20"
             >
-              Request early access <ArrowRight className="size-4" />
-            </Link>
+              View source on GitHub <ArrowRight className="size-4" />
+            </a>
           </div>
           <ul className="mt-4 grid gap-x-8 gap-y-1.5 text-sm text-muted-foreground sm:grid-cols-2">
             <li>· Context switching + namespace browsing</li>
@@ -125,7 +127,7 @@ export default function ResourcesPage() {
             <li>· Per-container logs with --previous support</li>
             <li>· Real status detection (CrashLoopBackOff, ImagePullBackOff…)</li>
             <li>· Read-only by design — no write path exists in the code</li>
-            <li>· macOS first; signed releases planned</li>
+            <li>· macOS first; signed releases planned — builds from source today</li>
           </ul>
         </div>
 
