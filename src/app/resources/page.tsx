@@ -87,12 +87,52 @@ export default function ResourcesPage() {
             <Monitor className="size-5 text-primary" /> Desktop cluster tools
           </h2>
           <p className="mt-3 text-muted-foreground">
-            Prefer a graphical interface over raw kubectl? These open-source
-            tools give you a real cluster UI — pods, logs, exec, and resource
-            editing. Links go to each project's official site; we don't host
-            or mirror binaries.
+            Prefer a graphical interface over raw kubectl? These tools give
+            you a real cluster UI — pods, logs, and resource inspection.
           </p>
         </div>
+
+        {/* Our own app — featured */}
+        <div className="mt-8 rounded-xl border border-primary/40 bg-primary/5 p-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="flex items-center gap-2 font-medium">
+                K8s Desktop
+                <span className="rounded-full border border-primary/50 px-2 py-0.5 text-[11px] text-primary">
+                  ours
+                </span>
+                <span className="rounded-full border border-amber-500/40 px-2 py-0.5 text-[11px] text-amber-300">
+                  in development
+                </span>
+              </h3>
+              <p className="mt-2 max-w-xl text-sm text-muted-foreground">
+                A lightweight read-only cluster viewer built on Electron. It
+                uses your existing kubeconfig through kubectl — so SSO and
+                exec-credential auth (GKE/EKS/AKS) work out of the box, and
+                nothing can modify your cluster.
+              </p>
+            </div>
+            <Link
+              href="/contact"
+              className="inline-flex items-center gap-2 rounded-lg border border-primary/50 bg-primary/10 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/20"
+            >
+              Request early access <ArrowRight className="size-4" />
+            </Link>
+          </div>
+          <ul className="mt-4 grid gap-x-8 gap-y-1.5 text-sm text-muted-foreground sm:grid-cols-2">
+            <li>· Context switching + namespace browsing</li>
+            <li>· Pods, deployments, services, PVCs, ingresses, nodes, events</li>
+            <li>· Per-container logs with --previous support</li>
+            <li>· Real status detection (CrashLoopBackOff, ImagePullBackOff…)</li>
+            <li>· Read-only by design — no write path exists in the code</li>
+            <li>· macOS first; signed releases planned</li>
+          </ul>
+        </div>
+
+        <p className="mt-8 text-sm text-muted-foreground">
+          Prefer an established open-source option? Links go to each project's
+          official site — we don't host or mirror binaries.
+        </p>
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {desktopTools.map((t) => (
             <a

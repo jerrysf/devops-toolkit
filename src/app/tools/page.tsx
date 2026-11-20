@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Monitor } from "lucide-react";
 import { tools } from "@/data/tools";
 import { absoluteUrl } from "@/lib/site";
 
@@ -52,6 +52,27 @@ export default function ToolsIndex() {
           </Link>
         ))}
       </div>
+
+      {/* Desktop app promo */}
+      <Link
+        href="/resources"
+        className="group mt-10 flex items-start gap-4 rounded-xl border border-primary/40 bg-primary/5 p-6 transition-colors hover:border-primary/60"
+      >
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
+          <Monitor className="size-5" />
+        </span>
+        <span>
+          <span className="flex items-center gap-2 font-medium">
+            K8s Desktop — a real cluster viewer, in development
+            <ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
+          </span>
+          <span className="mt-1 block text-sm text-muted-foreground">
+            Browser tools are great until you need live cluster state. K8s
+            Desktop is our read-only cluster viewer: contexts, namespaces,
+            pods, logs — using your existing kubeconfig, with no write paths.
+          </span>
+        </span>
+      </Link>
     </div>
   );
 }
